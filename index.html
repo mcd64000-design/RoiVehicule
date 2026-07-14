@@ -94,6 +94,11 @@ body{
   display:inline-block; background:var(--reglages-bg); color:var(--reglages); font-weight:700;
   font-size:12px; padding:3px 8px; border-radius:8px; margin-top:4px; margin-left:6px;
 }
+.warn-badge{
+  display:inline-block; background:#fef3c7; color:#b45309; font-weight:700;
+  font-size:11px; padding:3px 8px; border-radius:8px; margin-top:4px; margin-left:6px;
+}
+[data-theme="dark"] .warn-badge{background:#3a2b0f; color:#fbbf24;}
 .vehicule-stats{display:flex; gap:10px; margin-top:12px;}
 .stat-box{flex:1; background:var(--bg); border-radius:12px; padding:10px; text-align:center;}
 .stat-box .val{font-size:16px; font-weight:700;}
@@ -176,6 +181,16 @@ textarea{resize:none; height:60px;}
 
 .sub-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px;}
 
+.maint-label{display:flex; justify-content:space-between; font-size:11px; color:var(--text-secondary); margin-bottom:4px;}
+.maint-track{position:relative; height:34px; background:var(--bg); border-radius:17px; border:1px solid var(--border); overflow:hidden;}
+.maint-fill{position:absolute; top:0; left:0; height:100%; border-radius:17px; transition:width .3s;}
+.maint-icon-moving{position:absolute; top:50%; transform:translate(-50%,-50%); font-size:18px; transition:left .3s;}
+.maint-icon-target{position:absolute; top:50%; right:8px; transform:translateY(-50%); font-size:16px; opacity:.7;}
+.maint-status{font-size:11px; font-weight:700; margin-top:4px;}
+.maint-ok{color:var(--kpi);}
+.maint-warn{color:#d97706;}
+.maint-danger{color:var(--danger);}
+
 .modal-overlay{
   display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:100;
   align-items:flex-end; justify-content:center;
@@ -247,9 +262,14 @@ textarea{resize:none; height:60px;}
     <div class="subview active" id="tab-suivi">
       <button class="btn btn-depense" onclick="openModalDepense()">➕ Ajouter une dépense</button>
       <div class="btn-row">
+        <button class="btn btn-outline" onclick="openPleinExpress()">⚡ Plein express</button>
         <button class="btn btn-outline" onclick="openModal('modal-km')">📍 Mettre à jour le KM</button>
       </div>
       <div class="card" style="margin-top:14px;">
+        <div style="font-size:13px; font-weight:700; margin-bottom:6px;">🔔 Entretiens à venir</div>
+        <div id="maint-tracker-card"></div>
+      </div>
+      <div class="card">
         <div style="font-size:13px; color:var(--text-secondary);">Dernières opérations</div>
         <div id="suivi-recent" style="margin-top:10px;"></div>
       </div>
@@ -266,10 +286,25 @@ textarea{resize:none; height:60px;}
       </div>
       <button class="btn btn-kpi btn-sm" onclick="renderKPI()">Appliquer le filtre</button>
       <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="openExportModal()">📄 Exporter en PDF</button>
+      <div class="btn-row">
+        <button class="btn btn-outline btn-sm" onclick="exportVehicleCSV()">📤 Exporter CSV</button>
+        <button class="btn btn-outline btn-sm" onclick="triggerImportCSV()">📥 Importer CSV</button>
+      </div>
+      <input type="file" id="csv-file-input" accept=".csv" style="display:none;" onchange="handleCSVFileSelect(event)">
 
       <div class="kpi-mini-row" style="margin-top:14px;">
         <div class="kpi-mini"><div class="v" id="kpi-cout-total">0 €</div><div class="l">Coût période</div></div>
         <div class="kpi-mini"><div class="v" id="kpi-cout-km">0 €</div><div class="l">€ / km période</div></div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:700; font-size:14px; margin-bottom:10px;">💰 Bilan véhicule</div>
+        <div id="bilan-box"></div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:700; font-size:14px; margin-bottom:6px;">📊 Tendance du coût</div>
+        <div id="trend-box"></div>
       </div>
 
       <div class="card">
@@ -329,6 +364,18 @@ textarea{resize:none; height:60px;}
       <div class="choice-btn" data-vtype="moto" onclick="selectVType('moto')">🏍️ Moto</div>
       <div class="choice-btn" data-vtype="tracteur" onclick="selectVType('tracteur')">🚜 Tracteur/Util.</div>
     </div>
+    <label>Récurrence vidange (km, optionnel)</label>
+    <input type="text" inputmode="numeric" id="v-int-vidange" placeholder="Ex : 15000">
+    <label>Récurrence pneus (km, optionnel)</label>
+    <input type="text" inputmode="numeric" id="v-int-pneus" placeholder="Ex : 40000">
+    <div id="v-chaine-zone" style="display:none;">
+      <label>Récurrence graissage chaîne (km, optionnel)</label>
+      <input type="text" inputmode="numeric" id="v-int-chaine" placeholder="Ex : 500">
+    </div>
+    <label>Date du prochain contrôle technique (optionnel)</label>
+    <input type="date" id="v-date-ct">
+    <label>Date de renouvellement assurance (optionnel)</label>
+    <input type="date" id="v-date-assurance">
     <button class="btn btn-garage" style="margin-top:16px;" onclick="createVehicule()">Créer le véhicule</button>
   </div>
 </div>
@@ -354,6 +401,18 @@ textarea{resize:none; height:60px;}
       <div class="choice-btn" data-evtype="moto" onclick="selectEVType('moto')">🏍️ Moto</div>
       <div class="choice-btn" data-evtype="tracteur" onclick="selectEVType('tracteur')">🚜 Tracteur/Util.</div>
     </div>
+    <label>Récurrence vidange (km, optionnel)</label>
+    <input type="text" inputmode="numeric" id="e-int-vidange">
+    <label>Récurrence pneus (km, optionnel)</label>
+    <input type="text" inputmode="numeric" id="e-int-pneus">
+    <div id="e-chaine-zone" style="display:none;">
+      <label>Récurrence graissage chaîne (km, optionnel)</label>
+      <input type="text" inputmode="numeric" id="e-int-chaine">
+    </div>
+    <label>Date du prochain contrôle technique (optionnel)</label>
+    <input type="date" id="e-date-ct">
+    <label>Date de renouvellement assurance (optionnel)</label>
+    <input type="date" id="e-date-assurance">
     <button class="btn btn-garage" style="margin-top:16px;" onclick="saveEditVehicule()">Enregistrer les modifications</button>
   </div>
 </div>
@@ -375,6 +434,7 @@ textarea{resize:none; height:60px;}
         <div class="choice-btn" data-sub="vidange" onclick="selectSub('vidange')">🛢️ Vidange</div>
         <div class="choice-btn" data-sub="plaquettes" onclick="selectSub('plaquettes')">🅿️ Plaquettes</div>
         <div class="choice-btn" data-sub="disques" onclick="selectSub('disques')">💿 Disques</div>
+        <div class="choice-btn" data-sub="chaine" id="sub-chaine-btn" onclick="selectSub('chaine')" style="display:none;">⚙️ Chaîne</div>
         <div class="choice-btn" data-sub="autre" onclick="selectSub('autre')">➕ Autre</div>
       </div>
       <div id="autre-label-zone" style="display:none;">
@@ -393,6 +453,20 @@ textarea{resize:none; height:60px;}
     <textarea id="d-comment" placeholder="Note libre..."></textarea>
 
     <button class="btn btn-depense" style="margin-top:16px;" onclick="createDepense()">Enregistrer</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-plein-express">
+  <div class="modal-box">
+    <div class="modal-header"><h2>⚡ Plein express</h2><div class="close-x" onclick="closeModal('modal-plein-express')">✕</div></div>
+    <label>Montant</label>
+    <input type="text" inputmode="decimal" id="pe-cout" placeholder="Ex : 65,50">
+    <div style="font-size:12px; color:var(--garage); margin-top:10px; cursor:pointer; font-weight:600;" onclick="togglePeKm()">📍 Mettre à jour le kilométrage (optionnel)</div>
+    <div id="pe-km-zone" style="display:none;">
+      <label>Nouveau kilométrage</label>
+      <input type="text" inputmode="decimal" id="pe-km">
+    </div>
+    <button class="btn btn-depense" style="margin-top:16px;" onclick="savePleinExpress()">Valider le plein</button>
   </div>
 </div>
 
@@ -494,11 +568,153 @@ function switchTab(tab){
   document.querySelectorAll('.subview').forEach(v=>v.classList.remove('active'));
   document.getElementById('tab-'+tab).classList.add('active');
   if(tab==='historique') renderHistorique();
-  if(tab==='kpi') renderKPI();
-  if(tab==='suivi') renderSuiviRecent();
+  if(tab==='kpi'){ renderKPI(); renderBilan(); renderTrend(); }
+  if(tab==='suivi'){ renderSuiviRecent(); renderMaintTracker(); }
 }
 function openModal(id){ document.getElementById(id).classList.add('active'); }
 function closeModal(id){ document.getElementById(id).classList.remove('active'); }
+
+/* ============ MAINTENANCE ALERTS ============ */
+function computeMaintProgress(v, subKey, intervalKm){
+  if(!intervalKm || intervalKm<=0) return null;
+  const exp = data.expenses.filter(e=> e.vehicleId===v.id && e.subtypes && e.subtypes.includes(subKey));
+  let baseKm = v.kmInitial;
+  if(exp.length){
+    const last = exp.reduce((max,e)=> e.km>max.km?e:max, exp[0]);
+    baseKm = last.km;
+  }
+  const dueKm = baseKm + intervalKm;
+  const remaining = dueKm - v.kmActuel;
+  let progress = (v.kmActuel - baseKm) / intervalKm;
+  if(progress<0) progress=0;
+  if(progress>1) progress=1;
+  let status = 'ok';
+  if(remaining<=0) status='danger';
+  else if(progress>=0.85) status='warn';
+  return { baseKm, dueKm, remaining, progress, status };
+}
+function maintChecksForVehicle(v){
+  const checks = [];
+  if(v.intervalVidange) checks.push({key:'vidange', label:'Vidange', targetIcon:'💧', interval:v.intervalVidange});
+  if(v.intervalPneus) checks.push({key:'pneus', label:'Pneus', targetIcon:'🛞', interval:v.intervalPneus});
+  if(v.type==='moto' && v.intervalChaine) checks.push({key:'chaine', label:'Chaîne', targetIcon:'⚙️', interval:v.intervalChaine});
+  return checks;
+}
+function garageAlerts(v){
+  const alerts = [];
+  maintChecksForVehicle(v).forEach(c=>{
+    const p = computeMaintProgress(v, c.key, c.interval);
+    if(p && (p.status==='warn' || p.status==='danger')){
+      alerts.push(p.status==='danger' ? `⚠️ ${c.label} dépassée` : `⚠️ ${c.label} bientôt`);
+    }
+  });
+  const today = new Date();
+  if(v.dateCT){
+    const d = new Date(v.dateCT);
+    const days = Math.round((d-today)/86400000);
+    if(days<=30) alerts.push(days<0 ? '⚠️ CT expiré' : `⚠️ CT dans ${days}j`);
+  }
+  if(v.dateAssurance){
+    const d = new Date(v.dateAssurance);
+    const days = Math.round((d-today)/86400000);
+    if(days<=30) alerts.push(days<0 ? '⚠️ Assurance expirée' : `⚠️ Assurance dans ${days}j`);
+  }
+  return alerts;
+}
+function renderMaintTracker(){
+  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const card = document.getElementById('maint-tracker-card');
+  if(!card) return;
+  if(!v){ card.innerHTML=''; return; }
+  const items = maintChecksForVehicle(v);
+  if(items.length===0){
+    card.innerHTML = '<div class="empty-state" style="padding:16px 10px;">Renseignez une récurrence (vidange, pneus…) dans les infos du véhicule pour activer le suivi.</div>';
+    return;
+  }
+  const vIcon = vehicleTypeIcon(v.type);
+  card.innerHTML = items.map(it=>{
+    const p = computeMaintProgress(v, it.key, it.interval);
+    const pct = Math.round(p.progress*100);
+    const color = p.status==='danger' ? 'var(--danger)' : p.status==='warn' ? '#d97706' : 'var(--kpi)';
+    const statusClass = p.status==='danger' ? 'maint-danger' : p.status==='warn' ? 'maint-warn' : 'maint-ok';
+    const statusText = p.remaining<=0
+      ? `⚠️ Dépassé de ${Math.abs(Math.round(p.remaining)).toLocaleString('fr-FR')} km`
+      : `Encore ~${Math.round(p.remaining).toLocaleString('fr-FR')} km`;
+    return `
+      <div style="margin-bottom:14px;">
+        <div class="maint-label"><span>${it.label}</span><span>${pct}%</span></div>
+        <div class="maint-track">
+          <div class="maint-fill" style="width:${pct}%; background:${color};"></div>
+          <div class="maint-icon-moving" style="left:${pct}%;">${vIcon}</div>
+          <div class="maint-icon-target">${it.targetIcon}</div>
+        </div>
+        <div class="maint-status ${statusClass}">${statusText}</div>
+      </div>`;
+  }).join('');
+}
+
+/* ============ BILAN & TENDANCE ============ */
+function estimateResaleValue(v){
+  if(!v.prixAchat) return null;
+  const age = v.anneeMiseEnService ? Math.max(new Date().getFullYear() - v.anneeMiseEnService, 0) : 0;
+  let value = v.prixAchat * Math.pow(0.85, age);
+  const floor = v.prixAchat * 0.05;
+  if(value < floor) value = floor;
+  return value;
+}
+function renderBilan(){
+  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const box = document.getElementById('bilan-box');
+  if(!box) return;
+  if(!v || !v.prixAchat){
+    box.innerHTML = '<div class="empty-state" style="padding:12px 6px;">Renseignez le prix d\'achat du véhicule pour activer le bilan.</div>';
+    return;
+  }
+  const valeurEstimee = estimateResaleValue(v);
+  const totalFrais = data.expenses.filter(e=>e.vehicleId===v.id).reduce((s,e)=>s+e.cout,0);
+  const perteValeur = v.prixAchat - valeurEstimee;
+  const coutPossession = perteValeur + totalFrais;
+  box.innerHTML = `
+    <div class="kpi-mini-row">
+      <div class="kpi-mini"><div class="v">${fmtMoney(v.prixAchat)}</div><div class="l">Prix d'achat</div></div>
+      <div class="kpi-mini"><div class="v">${fmtMoney(valeurEstimee)}</div><div class="l">Valeur estimée</div></div>
+    </div>
+    <div class="kpi-mini-row">
+      <div class="kpi-mini"><div class="v">${fmtMoney(totalFrais)}</div><div class="l">Frais engagés</div></div>
+      <div class="kpi-mini"><div class="v">${fmtMoney(coutPossession)}</div><div class="l">Coût de possession</div></div>
+    </div>
+    <div style="font-size:11px; color:var(--text-secondary); text-align:center; margin-top:6px;">Estimation indicative (dépréciation ~15%/an), à titre de repère uniquement.</div>`;
+}
+function renderTrend(){
+  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const box = document.getElementById('trend-box');
+  if(!box) return;
+  if(!v){ box.innerHTML=''; return; }
+  const exp = data.expenses.filter(e=>e.vehicleId===v.id).sort((a,b)=>a.date.localeCompare(b.date));
+  if(exp.length < 4){
+    box.innerHTML = '<div class="empty-state" style="padding:12px 6px;">Pas encore assez de données pour dégager une tendance.</div>';
+    return;
+  }
+  const dates = exp.map(e=>e.date);
+  const firstDate = new Date(dates[0]);
+  const lastDate = new Date(dates[dates.length-1]);
+  const midTime = (firstDate.getTime()+lastDate.getTime())/2;
+  const midStr = new Date(midTime).toISOString().slice(0,10);
+  const firstHalf = exp.filter(e=>e.date<midStr);
+  const secondHalf = exp.filter(e=>e.date>=midStr);
+  const totalFirst = firstHalf.reduce((s,e)=>s+e.cout,0);
+  const totalSecond = secondHalf.reduce((s,e)=>s+e.cout,0);
+  if(totalFirst<=0){ box.innerHTML = '<div class="empty-state" style="padding:12px 6px;">Pas encore assez de données pour dégager une tendance.</div>'; return; }
+  const variation = ((totalSecond-totalFirst)/totalFirst)*100;
+  let icon, text, cls;
+  if(variation > 20){ icon='📈'; cls='maint-danger'; text='Coût en forte hausse ('+Math.round(variation)+'%)'; }
+  else if(variation > 5){ icon='📈'; cls='maint-warn'; text='Coût en légère hausse ('+Math.round(variation)+'%)'; }
+  else if(variation < -5){ icon='📉'; cls='maint-ok'; text='Coût en baisse ('+Math.round(variation)+'%)'; }
+  else { icon='➡️'; cls='maint-ok'; text='Coût stable'; }
+  box.innerHTML = `<div style="font-size:26px; text-align:center; margin-bottom:4px;">${icon}</div>
+    <div class="maint-status ${cls}" style="text-align:center; font-size:13px;">${text}</div>
+    <div style="text-align:center; font-size:11px; color:var(--text-secondary); margin-top:4px;">Comparaison 1ère vs 2ème moitié de l'historique</div>`;
+}
 
 function renderGarage(){
   const list = document.getElementById('garage-list');
@@ -515,6 +731,7 @@ function renderGarage(){
     const coutKm = kmParcourus > 0 ? total/kmParcourus : 0;
     const age = v.anneeMiseEnService ? Math.max(currentYear - v.anneeMiseEnService, 0) : null;
     const ageLabel = age !== null ? (age <= 1 ? age+' an' : age+' ans') : null;
+    const alerts = garageAlerts(v).slice(0,2);
     return `
       <div class="card vehicule-card" onclick="openVehicule('${v.id}')">
         <div class="fav-icon" onclick="event.stopPropagation(); toggleFavori('${v.id}')">${v.favori ? '⭐' : '☆'}</div>
@@ -524,6 +741,7 @@ function renderGarage(){
         <span class="plate">${escapeHtml(v.immat)}</span>
         ${ageLabel ? `<span class="age-badge">${ageLabel}</span>` : ''}
         ${v.prixAchat ? `<span class="age-badge">Achat : ${fmtMoney(v.prixAchat)}</span>` : ''}
+        ${alerts.map(a=>`<span class="warn-badge">${a}</span>`).join('')}
         <div class="vehicule-stats">
           <div class="stat-box"><div class="val">${v.kmActuel.toLocaleString('fr-FR')} km</div><div class="lbl">Kilométrage</div></div>
           <div class="stat-box"><div class="val">${fmtMoney(total)}</div><div class="lbl">Coût total</div></div>
@@ -541,12 +759,19 @@ function openAddVehiculeModal(){
   document.getElementById('v-annee').value='';
   document.getElementById('v-prix').value='';
   document.getElementById('v-km').value='';
+  document.getElementById('v-int-vidange').value='';
+  document.getElementById('v-int-pneus').value='';
+  document.getElementById('v-int-chaine').value='';
+  document.getElementById('v-date-ct').value='';
+  document.getElementById('v-date-assurance').value='';
+  document.getElementById('v-chaine-zone').style.display='none';
   document.querySelectorAll('#type-grid .choice-btn').forEach(b=>b.classList.remove('selected'));
   openModal('modal-vehicule');
 }
 function selectVType(t){
   selectedVType = t;
   document.querySelectorAll('#type-grid .choice-btn').forEach(b=>b.classList.toggle('selected', b.dataset.vtype===t));
+  document.getElementById('v-chaine-zone').style.display = t==='moto' ? 'block' : 'none';
 }
 
 function createVehicule(){
@@ -578,7 +803,21 @@ function createVehicule(){
       return;
     }
   }
-  const v = { id: uid(), marque, modele, immat, anneeMiseEnService, prixAchat, type: selectedVType, favori:false, kmInitial: km, kmActuel: km, createdAt: todayStr() };
+  const intVidangeStr = document.getElementById('v-int-vidange').value.trim();
+  const intPneusStr = document.getElementById('v-int-pneus').value.trim();
+  const intChaineStr = document.getElementById('v-int-chaine').value.trim();
+  const dateCT = document.getElementById('v-date-ct').value || null;
+  const dateAssurance = document.getElementById('v-date-assurance').value || null;
+  const intervalVidange = intVidangeStr ? parseNum(intVidangeStr) : null;
+  const intervalPneus = intPneusStr ? parseNum(intPneusStr) : null;
+  const intervalChaine = intChaineStr ? parseNum(intChaineStr) : null;
+
+  const v = { id: uid(), marque, modele, immat, anneeMiseEnService, prixAchat, type: selectedVType, favori:false,
+    intervalVidange: (intervalVidange!=null && !isNaN(intervalVidange)) ? intervalVidange : null,
+    intervalPneus: (intervalPneus!=null && !isNaN(intervalPneus)) ? intervalPneus : null,
+    intervalChaine: (intervalChaine!=null && !isNaN(intervalChaine)) ? intervalChaine : null,
+    dateCT, dateAssurance,
+    kmInitial: km, kmActuel: km, createdAt: todayStr() };
   data.vehicles.push(v);
   data.kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km });
   saveData();
@@ -617,13 +856,20 @@ function openEditVehicule(id){
   document.getElementById('e-immat').value = v.immat;
   document.getElementById('e-annee').value = v.anneeMiseEnService || '';
   document.getElementById('e-prix').value = v.prixAchat != null ? v.prixAchat : '';
+  document.getElementById('e-int-vidange').value = v.intervalVidange || '';
+  document.getElementById('e-int-pneus').value = v.intervalPneus || '';
+  document.getElementById('e-int-chaine').value = v.intervalChaine || '';
+  document.getElementById('e-date-ct').value = v.dateCT || '';
+  document.getElementById('e-date-assurance').value = v.dateAssurance || '';
   selectedEVType = v.type || null;
   document.querySelectorAll('#edit-type-grid .choice-btn').forEach(b=>b.classList.toggle('selected', b.dataset.evtype===selectedEVType));
+  document.getElementById('e-chaine-zone').style.display = (selectedEVType==='moto') ? 'block' : 'none';
   openModal('modal-edit-vehicule');
 }
 function selectEVType(t){
   selectedEVType = t;
   document.querySelectorAll('#edit-type-grid .choice-btn').forEach(b=>b.classList.toggle('selected', b.dataset.evtype===t));
+  document.getElementById('e-chaine-zone').style.display = t==='moto' ? 'block' : 'none';
 }
 function saveEditVehicule(){
   const v = data.vehicles.find(x=>x.id===editingVehicleId);
@@ -655,16 +901,31 @@ function saveEditVehicule(){
       return;
     }
   }
+  const intVidangeStr = document.getElementById('e-int-vidange').value.trim();
+  const intPneusStr = document.getElementById('e-int-pneus').value.trim();
+  const intChaineStr = document.getElementById('e-int-chaine').value.trim();
+  const dateCT = document.getElementById('e-date-ct').value || null;
+  const dateAssurance = document.getElementById('e-date-assurance').value || null;
+  const intervalVidange = intVidangeStr ? parseNum(intVidangeStr) : null;
+  const intervalPneus = intPneusStr ? parseNum(intPneusStr) : null;
+  const intervalChaine = intChaineStr ? parseNum(intChaineStr) : null;
+
   v.marque = marque; v.modele = modele; v.immat = immat;
   v.anneeMiseEnService = anneeMiseEnService;
   v.prixAchat = prixAchat;
   v.type = selectedEVType;
+  v.intervalVidange = (intervalVidange!=null && !isNaN(intervalVidange)) ? intervalVidange : null;
+  v.intervalPneus = (intervalPneus!=null && !isNaN(intervalPneus)) ? intervalPneus : null;
+  v.intervalChaine = (intervalChaine!=null && !isNaN(intervalChaine)) ? intervalChaine : null;
+  v.dateCT = dateCT;
+  v.dateAssurance = dateAssurance;
   saveData();
   closeModal('modal-edit-vehicule');
   renderGarage();
   if(currentVehicleId === v.id){
     document.getElementById('veh-title').textContent = v.marque+' '+v.modele;
     document.getElementById('veh-plate').textContent = v.immat;
+    renderMaintTracker();
   }
 }
 
@@ -704,6 +965,8 @@ function openModalDepense(){
   const v = data.vehicles.find(x=>x.id===currentVehicleId);
   document.getElementById('d-km').value = v ? v.kmActuel : '';
   document.getElementById('d-comment').value='';
+  const chaineBtn = document.getElementById('sub-chaine-btn');
+  if(chaineBtn) chaineBtn.style.display = (v && v.type==='moto') ? '' : 'none';
   openModal('modal-depense');
 }
 function selectType(t){
@@ -750,6 +1013,7 @@ function createDepense(){
   closeModal('modal-depense');
   refreshVehStats();
   renderSuiviRecent();
+  renderMaintTracker();
 }
 
 function updateKmOnly(){
@@ -763,6 +1027,44 @@ function updateKmOnly(){
   document.getElementById('km-new').value='';
   closeModal('modal-km');
   refreshVehStats();
+  renderMaintTracker();
+}
+
+/* ============ PLEIN EXPRESS ============ */
+function openPleinExpress(){
+  document.getElementById('pe-cout').value='';
+  document.getElementById('pe-km').value='';
+  document.getElementById('pe-km-zone').style.display='none';
+  openModal('modal-plein-express');
+}
+function togglePeKm(){
+  const zone = document.getElementById('pe-km-zone');
+  zone.style.display = zone.style.display==='none' ? 'block' : 'none';
+}
+function savePleinExpress(){
+  const cout = parseNum(document.getElementById('pe-cout').value);
+  if(isNaN(cout)){ alert('Merci de saisir un montant valide.'); return; }
+  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  if(!v) return;
+  let km = v.kmActuel;
+  const kmZoneVisible = document.getElementById('pe-km-zone').style.display === 'block';
+  if(kmZoneVisible){
+    const newKm = parseNum(document.getElementById('pe-km').value);
+    if(!isNaN(newKm) && newKm >= v.kmActuel){
+      km = newKm;
+    }
+  }
+  const e = { id: uid(), vehicleId: v.id, type:'carburant', subtypes:[], autreLabel:null, date: todayStr(), cout, km, comment:'' };
+  data.expenses.push(e);
+  if(km > v.kmActuel){
+    v.kmActuel = km;
+    data.kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km });
+  }
+  saveData();
+  closeModal('modal-plein-express');
+  refreshVehStats();
+  renderSuiviRecent();
+  renderMaintTracker();
 }
 
 function renderSuiviRecent(){
@@ -805,7 +1107,7 @@ function histoItemHtml(e, withDelete){
     </div>`;
 }
 function subLabel(s){
-  return {pneus:'Pneus', vidange:'Vidange', plaquettes:'Plaquettes', disques:'Disques de frein', autre:'Autre'}[s] || 'Entretien';
+  return {pneus:'Pneus', vidange:'Vidange', plaquettes:'Plaquettes', disques:'Disques de frein', autre:'Autre', chaine:'Chaîne'}[s] || 'Entretien';
 }
 function formatDate(d){
   const [y,m,day] = d.split('-');
@@ -819,6 +1121,7 @@ function askDeleteDepense(id){
     renderHistorique();
     refreshVehStats();
     renderSuiviRecent();
+    renderMaintTracker();
   };
   openModal('modal-confirm');
 }
@@ -855,7 +1158,8 @@ function renderKPI(){
   document.getElementById('kpi-cout-km').textContent = fmtMoney(coutKm);
 
   const subs = ['pneus','vidange','plaquettes','disques','autre'];
-  const icons = {pneus:'🛞', vidange:'🛢️', plaquettes:'🅿️', disques:'💿', autre:'➕'};
+  if(v.type==='moto') subs.push('chaine');
+  const icons = {pneus:'🛞', vidange:'🛢️', plaquettes:'🅿️', disques:'💿', autre:'➕', chaine:'⚙️'};
   const zone = document.getElementById('kpi-timelines');
   zone.innerHTML = subs.map(s=>{
     const entries = allExp.filter(e=> (e.subtypes && e.subtypes.includes(s)) || e.subtype===s)
@@ -962,6 +1266,159 @@ function generatePDF(){
   closeModal('modal-export');
 }
 
+/* ============ CSV EXPORT / IMPORT ============ */
+function csvEscape(val){
+  if(val === null || val === undefined) return '';
+  const str = String(val);
+  if(/[",\n;]/.test(str)){
+    return '"' + str.replace(/"/g,'""') + '"';
+  }
+  return str;
+}
+function downloadCSV(content, filename){
+  const bom = '\uFEFF';
+  const blob = new Blob([bom+content], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  if(navigator.share && /iPhone|iPad|iPod/.test(navigator.userAgent)){
+    try{
+      const file = new File([blob], filename, {type:'text/csv'});
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        navigator.share({files:[file], title: filename}).catch(()=>{ fallbackDownloadCSV(url, filename); });
+        return;
+      }
+    }catch(e){}
+  }
+  fallbackDownloadCSV(url, filename);
+}
+function fallbackDownloadCSV(url, filename){
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 3000);
+}
+function exportVehicleCSV(){
+  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  if(!v) return;
+  const rows = [];
+  rows.push(['TYPE','marque','modele','immat','anneeMiseEnService','prixAchat','vtype','favori','kmInitial','kmActuel','intervalVidange','intervalPneus','intervalChaine','dateCT','dateAssurance'].map(csvEscape).join(','));
+  rows.push(['VEHICULE', v.marque, v.modele, v.immat, v.anneeMiseEnService||'', v.prixAchat||'', v.type||'', v.favori?1:0, v.kmInitial, v.kmActuel, v.intervalVidange||'', v.intervalPneus||'', v.intervalChaine||'', v.dateCT||'', v.dateAssurance||''].map(csvEscape).join(','));
+  rows.push('');
+  rows.push(['TYPE','date','depenseType','subtypes','autreLabel','cout','km','comment'].map(csvEscape).join(','));
+  const exp = data.expenses.filter(e=>e.vehicleId===v.id).sort((a,b)=>a.date.localeCompare(b.date));
+  exp.forEach(e=>{
+    const subtypes = (e.subtypes||[]).join('|');
+    rows.push(['DEPENSE', e.date, e.type, subtypes, e.autreLabel||'', e.cout, e.km, e.comment||''].map(csvEscape).join(','));
+  });
+  const csvContent = rows.join('\r\n');
+  downloadCSV(csvContent, 'sauvegarde_'+v.immat.replace(/\s/g,'')+'_'+todayStr()+'.csv');
+}
+function parseCSVLine(line){
+  const result = [];
+  let cur = '';
+  let inQuotes = false;
+  for(let i=0;i<line.length;i++){
+    const c = line[i];
+    if(inQuotes){
+      if(c==='"'){
+        if(line[i+1]==='"'){ cur+='"'; i++; }
+        else { inQuotes=false; }
+      } else {
+        cur += c;
+      }
+    } else {
+      if(c==='"'){ inQuotes=true; }
+      else if(c===','){ result.push(cur); cur=''; }
+      else { cur += c; }
+    }
+  }
+  result.push(cur);
+  return result;
+}
+function triggerImportCSV(){
+  document.getElementById('csv-file-input').click();
+}
+function handleCSVFileSelect(evt){
+  const file = evt.target.files[0];
+  if(file) importCSVFile(file);
+  evt.target.value = '';
+}
+function importCSVFile(file){
+  const reader = new FileReader();
+  reader.onload = function(evt){
+    try{
+      let text = evt.target.result;
+      if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      const lines = text.split(/\r\n|\n/).filter(l=>l.length>0);
+      let vehicleRow = null;
+      const expenseRows = [];
+      lines.forEach(line=>{
+        const cols = parseCSVLine(line);
+        if(cols[0]==='VEHICULE'){ vehicleRow = cols; }
+        else if(cols[0]==='DEPENSE'){ expenseRows.push(cols); }
+      });
+      if(!vehicleRow){
+        alert('Fichier CSV invalide ou non reconnu.');
+        return;
+      }
+      const marque = vehicleRow[1], modele = vehicleRow[2], immat = vehicleRow[3];
+      const anneeStr = vehicleRow[4], prixStr = vehicleRow[5], vtype = vehicleRow[6];
+      const kmInitialStr = vehicleRow[8], kmActuelStr = vehicleRow[9];
+      const intVidangeStr = vehicleRow[10], intPneusStr = vehicleRow[11], intChaineStr = vehicleRow[12];
+      const dateCT = vehicleRow[13], dateAssurance = vehicleRow[14];
+
+      const newVehicleId = uid();
+      const v = {
+        id: newVehicleId,
+        marque: marque || 'Véhicule',
+        modele: modele || 'importé',
+        immat: immat || '',
+        anneeMiseEnService: anneeStr ? parseInt(anneeStr,10) : null,
+        prixAchat: prixStr ? parseNum(prixStr) : null,
+        type: vtype || 'voiture',
+        favori: false,
+        kmInitial: kmInitialStr ? parseNum(kmInitialStr) : 0,
+        kmActuel: kmActuelStr ? parseNum(kmActuelStr) : 0,
+        intervalVidange: intVidangeStr ? parseNum(intVidangeStr) : null,
+        intervalPneus: intPneusStr ? parseNum(intPneusStr) : null,
+        intervalChaine: intChaineStr ? parseNum(intChaineStr) : null,
+        dateCT: dateCT || null,
+        dateAssurance: dateAssurance || null,
+        createdAt: todayStr()
+      };
+      data.vehicles.push(v);
+      data.kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km: v.kmActuel });
+
+      expenseRows.forEach(cols=>{
+        const date = cols[1], depenseType = cols[2], subtypesStr = cols[3], autreLabel = cols[4];
+        const coutStr = cols[5], kmStr = cols[6], comment = cols[7];
+        const e = {
+          id: uid(),
+          vehicleId: v.id,
+          type: depenseType || 'carburant',
+          subtypes: subtypesStr ? subtypesStr.split('|').filter(Boolean) : [],
+          autreLabel: autreLabel || null,
+          date: date || todayStr(),
+          cout: coutStr ? parseNum(coutStr) : 0,
+          km: kmStr ? parseNum(kmStr) : v.kmInitial,
+          comment: comment || ''
+        };
+        data.expenses.push(e);
+      });
+
+      saveData();
+      renderGarage();
+      alert('Véhicule importé avec succès : '+v.marque+' '+v.modele);
+      openScreen('garage');
+    } catch(err){
+      alert('Erreur lors de la lecture du fichier CSV.');
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
 function updateSettingsUI(){
   document.getElementById('opt-light').classList.toggle('active-opt', data.theme==='light');
   document.getElementById('opt-dark').classList.toggle('active-opt', data.theme==='dark');
@@ -994,4 +1451,4 @@ function escapeHtml(str){
 init();
 </script>
 </body>
-  </html>
+</html>
