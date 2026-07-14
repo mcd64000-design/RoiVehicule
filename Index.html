@@ -1,1 +1,997 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Mon Budget Voiture</title>
+<style>
+:root{
+  --bg:#f2f3f7;
+  --card-bg:#ffffff;
+  --text:#1a1a2e;
+  --text-secondary:#6b7280;
+  --border:#e5e7eb;
+  --garage:#2563eb;
+  --garage-bg:#eaf1fe;
+  --depense:#ff6b35;
+  --depense-bg:#fff1ea;
+  --kpi:#16a34a;
+  --kpi-bg:#eafbf0;
+  --reglages:#6c757d;
+  --reglages-bg:#eef0f2;
+  --danger:#e11d48;
+  --shadow:0 2px 10px rgba(0,0,0,0.06);
+}
+[data-theme="dark"]{
+  --bg:#121218;
+  --card-bg:#1c1c26;
+  --text:#f2f3f7;
+  --text-secondary:#9ca3af;
+  --border:#2d2d3a;
+  --garage-bg:#17233d;
+  --depense-bg:#3a2417;
+  --kpi-bg:#123a22;
+  --reglages-bg:#26262f;
+  --shadow:0 2px 10px rgba(0,0,0,0.4);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+body{
+  margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background:var(--bg); color:var(--text); min-height:100vh; padding-bottom:20px;
+  transition:background .2s,color .2s;
+}
+.container{max-width:480px; margin:0 auto; padding:16px;}
+.screen{display:none;}
+.screen.active{display:block; animation:fadeIn .2s ease;}
+@keyframes fadeIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
 
+#splash-screen{
+  position:fixed; inset:0; z-index:999;
+  background:linear-gradient(135deg,#2563eb,#16a34a);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  animation: splashFadeOut .6s ease 3.2s forwards;
+}
+.splash-logo{font-size:64px; animation: splashPop .8s ease;}
+.splash-title{color:#fff; font-size:20px; font-weight:800; margin-top:14px; opacity:0; animation: splashTextIn .6s ease .5s forwards; letter-spacing:.5px;}
+.splash-brand{color:rgba(255,255,255,0.85); font-size:12px; font-weight:700; letter-spacing:1.5px; margin-top:10px; opacity:0; animation: splashTextIn .6s ease .9s forwards; text-transform:uppercase;}
+@keyframes splashPop{0%{transform:scale(0.4);opacity:0;} 60%{transform:scale(1.15);opacity:1;} 100%{transform:scale(1);opacity:1;}}
+@keyframes splashTextIn{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
+@keyframes splashFadeOut{to{opacity:0; visibility:hidden;}}
+
+.topbar{display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;}
+.topbar h1{font-size:20px; margin:0; font-weight:700;}
+.icon-btn{
+  background:var(--card-bg); border:1px solid var(--border); width:42px; height:42px;
+  border-radius:14px; display:flex; align-items:center; justify-content:center;
+  font-size:18px; cursor:pointer; box-shadow:var(--shadow); color:var(--text);
+}
+.back-btn{display:flex; align-items:center; gap:6px; color:var(--text-secondary); font-size:14px; cursor:pointer; margin-bottom:8px;}
+
+.btn{
+  border:none; border-radius:16px; padding:14px 18px; font-size:15px; font-weight:600;
+  cursor:pointer; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;
+  box-shadow:var(--shadow);
+}
+.btn-garage{background:var(--garage); color:#fff;}
+.btn-depense{background:var(--depense); color:#fff;}
+.btn-kpi{background:var(--kpi); color:#fff;}
+.btn-outline{background:var(--card-bg); color:var(--text); border:1px solid var(--border);}
+.btn-danger{background:var(--danger); color:#fff;}
+.btn-sm{padding:10px 14px; font-size:13px; border-radius:12px;}
+.btn-row{display:flex; gap:10px; margin-top:10px;}
+
+.card{
+  background:var(--card-bg); border-radius:18px; padding:16px; box-shadow:var(--shadow);
+  margin-bottom:12px; border:1px solid var(--border);
+}
+.vehicule-card{cursor:pointer; position:relative;}
+.vehicule-card h3{margin:0 0 2px; font-size:17px; padding-right:80px;}
+.vehicule-card .plate{
+  display:inline-block; background:var(--garage-bg); color:var(--garage); font-weight:700;
+  font-size:12px; padding:3px 8px; border-radius:8px; margin-top:4px;
+}
+.age-badge{
+  display:inline-block; background:var(--reglages-bg); color:var(--reglages); font-weight:700;
+  font-size:12px; padding:3px 8px; border-radius:8px; margin-top:4px; margin-left:6px;
+}
+.vehicule-stats{display:flex; gap:10px; margin-top:12px;}
+.stat-box{flex:1; background:var(--bg); border-radius:12px; padding:10px; text-align:center;}
+.stat-box .val{font-size:16px; font-weight:700;}
+.stat-box .lbl{font-size:11px; color:var(--text-secondary); margin-top:2px;}
+.fav-icon{position:absolute; top:14px; right:76px; font-size:17px; cursor:pointer;}
+.edit-icon{position:absolute; top:14px; right:44px; font-size:19px; opacity:.6; cursor:pointer; font-weight:900; line-height:1;}
+.del-icon{position:absolute; top:14px; right:14px; font-size:16px; opacity:.5; cursor:pointer;}
+
+.empty-state{text-align:center; color:var(--text-secondary); padding:40px 10px; font-size:14px;}
+
+.km-hero{
+  background:linear-gradient(135deg,var(--garage),#4f8ff7); color:#fff; border-radius:20px;
+  padding:22px; text-align:center; margin-bottom:14px; box-shadow:var(--shadow);
+}
+.km-hero .big{font-size:34px; font-weight:800;}
+.km-hero .sub{font-size:13px; opacity:.9; margin-top:2px;}
+.kpi-mini-row{display:flex; gap:10px; margin-bottom:14px;}
+.kpi-mini{flex:1; background:var(--card-bg); border-radius:14px; padding:12px; text-align:center; border:1px solid var(--border);}
+.kpi-mini .v{font-size:16px; font-weight:700;}
+.kpi-mini .l{font-size:11px; color:var(--text-secondary);}
+
+.tabbar{display:flex; gap:8px; margin:16px 0;}
+.tab-btn{
+  flex:1; text-align:center; padding:10px 4px; border-radius:12px; font-size:12px; font-weight:600;
+  cursor:pointer; border:1px solid var(--border); background:var(--card-bg); color:var(--text-secondary);
+}
+.tab-btn.active-tab{color:#fff; border:none;}
+.tab-btn[data-tab="suivi"].active-tab{background:var(--depense);}
+.tab-btn[data-tab="historique"].active-tab{background:var(--garage);}
+.tab-btn[data-tab="kpi"].active-tab{background:var(--kpi);}
+
+.subview{display:none;}
+.subview.active{display:block;}
+
+.histo-item{
+  display:flex; justify-content:space-between; align-items:center; padding:12px; border-radius:14px;
+  background:var(--card-bg); border:1px solid var(--border); margin-bottom:8px;
+}
+.histo-left .type-tag{
+  font-size:11px; font-weight:700; padding:2px 8px; border-radius:8px; display:inline-block; margin-bottom:4px;
+}
+.tag-carburant{background:var(--depense-bg); color:var(--depense);}
+.tag-entretien{background:var(--kpi-bg); color:var(--kpi);}
+.histo-left .date{font-size:12px; color:var(--text-secondary);}
+.histo-left .comment{font-size:12px; color:var(--text-secondary); font-style:italic; margin-top:2px;}
+.histo-right{text-align:right;}
+.histo-right .amount{font-weight:700; font-size:15px;}
+.histo-right .km{font-size:11px; color:var(--text-secondary);}
+.histo-del{font-size:15px; opacity:.4; margin-left:10px; cursor:pointer;}
+
+.date-range{display:flex; gap:8px; margin-bottom:12px;}
+.date-range input{flex:1;}
+.timeline-block{margin-bottom:10px;}
+.timeline-title{font-size:13px; font-weight:700; margin-bottom:6px; display:flex; align-items:center; gap:6px;}
+.timeline-entry{
+  font-size:12px; color:var(--text-secondary); padding:8px 10px; background:var(--bg);
+  border-radius:10px; margin-bottom:5px; display:flex; justify-content:space-between;
+}
+
+label{font-size:12px; font-weight:600; color:var(--text-secondary); display:block; margin:10px 0 4px;}
+input[type="text"], input[type="date"], select, textarea{
+  width:100%; padding:12px; border-radius:12px; border:1px solid var(--border);
+  background:var(--bg); color:var(--text); font-size:15px; font-family:inherit;
+}
+textarea{resize:none; height:60px;}
+
+.type-choice{display:flex; gap:8px; margin-top:4px;}
+.choice-btn{
+  flex:1; padding:12px 6px; border-radius:12px; border:1px solid var(--border); background:var(--bg);
+  text-align:center; font-size:13px; font-weight:600; cursor:pointer; color:var(--text-secondary);
+}
+.choice-btn.selected{color:#fff; border:none;}
+.choice-btn.selected[data-val="carburant"]{background:var(--depense);}
+.choice-btn.selected[data-val="entretien"]{background:var(--kpi);}
+.choice-btn.selected[data-sub]{background:var(--garage);}
+.choice-btn.selected[data-vtype]{background:var(--garage);}
+.choice-btn.selected[data-evtype]{background:var(--garage);}
+.choice-btn.selected[data-exp="carburant"]{background:var(--depense);}
+.choice-btn.selected[data-exp="entretien"]{background:var(--kpi);}
+
+.sub-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px;}
+
+.modal-overlay{
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:100;
+  align-items:flex-end; justify-content:center;
+}
+.modal-overlay.active{display:flex;}
+.modal-box{
+  background:var(--card-bg); width:100%; max-width:480px; border-radius:22px 22px 0 0;
+  padding:20px; max-height:88vh; overflow-y:auto; animation:slideUp .25s ease;
+}
+@keyframes slideUp{from{transform:translateY(30px); opacity:0;} to{transform:translateY(0); opacity:1;}}
+.modal-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;}
+.modal-header h2{font-size:18px; margin:0;}
+.close-x{font-size:20px; cursor:pointer; color:var(--text-secondary);}
+
+.confirm-box p{font-size:14px; color:var(--text-secondary);}
+
+.settings-row{
+  display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-bottom:1px solid var(--border);
+}
+.settings-row:last-child{border-bottom:none;}
+.settings-row .lbl{font-size:14px; font-weight:600;}
+.switch{display:flex; gap:6px;}
+.switch-opt{
+  padding:8px 14px; border-radius:10px; font-size:12px; font-weight:700; cursor:pointer;
+  border:1px solid var(--border); color:var(--text-secondary);
+}
+.switch-opt.active-opt{background:var(--reglages); color:#fff; border:none;}
+</style>
+</head>
+<body>
+
+<div id="splash-screen">
+  <div class="splash-logo">🚗</div>
+  <div class="splash-title">Mon Budget Voiture</div>
+  <div class="splash-brand">By MCD STUDIO</div>
+</div>
+
+<div class="container">
+
+  <div class="screen active" id="screen-garage">
+    <div class="topbar">
+      <h1>🚗 Mon Garage</h1>
+      <div class="icon-btn" onclick="openScreen('reglages')">⚙️</div>
+    </div>
+    <div id="garage-list"></div>
+    <button class="btn btn-garage" onclick="openAddVehiculeModal()">➕ Ajouter un véhicule</button>
+  </div>
+
+  <div class="screen" id="screen-vehicule">
+    <div class="back-btn" onclick="openScreen('garage')">⬅ Retour au garage</div>
+    <div class="topbar">
+      <h1 id="veh-title">Véhicule</h1>
+    </div>
+    <div class="km-hero">
+      <div class="big" id="veh-km">0 km</div>
+      <div class="sub" id="veh-plate">—</div>
+    </div>
+    <div class="kpi-mini-row">
+      <div class="kpi-mini"><div class="v" id="veh-cout-total">0 €</div><div class="l">Coût total</div></div>
+      <div class="kpi-mini"><div class="v" id="veh-cout-km">0 €</div><div class="l">€ / km</div></div>
+    </div>
+
+    <div class="tabbar">
+      <div class="tab-btn active-tab" data-tab="suivi" onclick="switchTab('suivi')">➕ Suivi</div>
+      <div class="tab-btn" data-tab="historique" onclick="switchTab('historique')">📜 Historique</div>
+      <div class="tab-btn" data-tab="kpi" onclick="switchTab('kpi')">📊 KPI</div>
+    </div>
+
+    <div class="subview active" id="tab-suivi">
+      <button class="btn btn-depense" onclick="openModalDepense()">➕ Ajouter une dépense</button>
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="openModal('modal-km')">📍 Mettre à jour le KM</button>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div style="font-size:13px; color:var(--text-secondary);">Dernières opérations</div>
+        <div id="suivi-recent" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <div class="subview" id="tab-historique">
+      <div id="historique-list"></div>
+    </div>
+
+    <div class="subview" id="tab-kpi">
+      <div class="date-range">
+        <input type="date" id="kpi-start">
+        <input type="date" id="kpi-end">
+      </div>
+      <button class="btn btn-kpi btn-sm" onclick="renderKPI()">Appliquer le filtre</button>
+      <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="openExportModal()">📄 Exporter en PDF</button>
+
+      <div class="kpi-mini-row" style="margin-top:14px;">
+        <div class="kpi-mini"><div class="v" id="kpi-cout-total">0 €</div><div class="l">Coût période</div></div>
+        <div class="kpi-mini"><div class="v" id="kpi-cout-km">0 €</div><div class="l">€ / km période</div></div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:700; font-size:14px; margin-bottom:10px;">🔧 Récurrence entretien</div>
+        <div id="kpi-timelines"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-reglages">
+    <div class="back-btn" onclick="openScreen('garage')">⬅ Retour au garage</div>
+    <div class="topbar"><h1>⚙️ Réglages</h1></div>
+    <div class="card">
+      <label>Nom d'utilisateur</label>
+      <input type="text" id="input-username" placeholder="Votre nom" oninput="saveUsername()">
+    </div>
+    <div class="card">
+      <div class="settings-row">
+        <div class="lbl">Apparence</div>
+        <div class="switch">
+          <div class="switch-opt" id="opt-light" onclick="setTheme('light')">☀️ Clair</div>
+          <div class="switch-opt" id="opt-dark" onclick="setTheme('dark')">🌙 Sombre</div>
+        </div>
+      </div>
+      <div class="settings-row">
+        <div class="lbl">Devise</div>
+        <div class="switch">
+          <div class="switch-opt" id="opt-eur" onclick="setCurrency('EUR')">€ EUR</div>
+          <div class="switch-opt" id="opt-usd" onclick="setCurrency('USD')">$ USD</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="modal-overlay" id="modal-vehicule">
+  <div class="modal-box">
+    <div class="modal-header"><h2>Nouveau véhicule</h2><div class="close-x" onclick="closeModal('modal-vehicule')">✕</div></div>
+    <label>Marque</label>
+    <input type="text" id="v-marque" placeholder="Peugeot">
+    <label>Modèle</label>
+    <input type="text" id="v-modele" placeholder="308">
+    <label>Immatriculation</label>
+    <input type="text" id="v-immat" placeholder="AA-123-BB">
+    <label>Année de mise en service</label>
+    <input type="text" inputmode="numeric" id="v-annee" placeholder="Ex : 2018">
+    <label>Prix d'achat (optionnel)</label>
+    <input type="text" inputmode="decimal" id="v-prix" placeholder="Ex : 18500">
+    <label>Kilométrage actuel</label>
+    <input type="text" inputmode="decimal" id="v-km" placeholder="Ex : 45000">
+    <label>Type de véhicule</label>
+    <div class="sub-grid" id="type-grid">
+      <div class="choice-btn" data-vtype="voiture" onclick="selectVType('voiture')">🚘 Voiture</div>
+      <div class="choice-btn" data-vtype="camion" onclick="selectVType('camion')">🚚 Camion</div>
+      <div class="choice-btn" data-vtype="scooter" onclick="selectVType('scooter')">🛵 Scooter</div>
+      <div class="choice-btn" data-vtype="moto" onclick="selectVType('moto')">🏍️ Moto</div>
+      <div class="choice-btn" data-vtype="tracteur" onclick="selectVType('tracteur')">🚜 Tracteur/Util.</div>
+    </div>
+    <button class="btn btn-garage" style="margin-top:16px;" onclick="createVehicule()">Créer le véhicule</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-edit-vehicule">
+  <div class="modal-box">
+    <div class="modal-header"><h2>Modifier le véhicule</h2><div class="close-x" onclick="closeModal('modal-edit-vehicule')">✕</div></div>
+    <label>Marque</label>
+    <input type="text" id="e-marque">
+    <label>Modèle</label>
+    <input type="text" id="e-modele">
+    <label>Immatriculation</label>
+    <input type="text" id="e-immat">
+    <label>Année de mise en service</label>
+    <input type="text" inputmode="numeric" id="e-annee">
+    <label>Prix d'achat (optionnel)</label>
+    <input type="text" inputmode="decimal" id="e-prix">
+    <label>Type de véhicule</label>
+    <div class="sub-grid" id="edit-type-grid">
+      <div class="choice-btn" data-evtype="voiture" onclick="selectEVType('voiture')">🚘 Voiture</div>
+      <div class="choice-btn" data-evtype="camion" onclick="selectEVType('camion')">🚚 Camion</div>
+      <div class="choice-btn" data-evtype="scooter" onclick="selectEVType('scooter')">🛵 Scooter</div>
+      <div class="choice-btn" data-evtype="moto" onclick="selectEVType('moto')">🏍️ Moto</div>
+      <div class="choice-btn" data-evtype="tracteur" onclick="selectEVType('tracteur')">🚜 Tracteur/Util.</div>
+    </div>
+    <button class="btn btn-garage" style="margin-top:16px;" onclick="saveEditVehicule()">Enregistrer les modifications</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-depense">
+  <div class="modal-box">
+    <div class="modal-header"><h2>Nouvelle dépense</h2><div class="close-x" onclick="closeModal('modal-depense')">✕</div></div>
+
+    <label>Type</label>
+    <div class="type-choice">
+      <div class="choice-btn" data-val="carburant" onclick="selectType('carburant')">⛽ Carburant</div>
+      <div class="choice-btn" data-val="entretien" onclick="selectType('entretien')">🔧 Entretien</div>
+    </div>
+
+    <div id="sub-type-zone" style="display:none;">
+      <label>Type d'entretien (plusieurs choix possibles)</label>
+      <div class="sub-grid">
+        <div class="choice-btn" data-sub="pneus" onclick="selectSub('pneus')">🛞 Pneus</div>
+        <div class="choice-btn" data-sub="vidange" onclick="selectSub('vidange')">🛢️ Vidange</div>
+        <div class="choice-btn" data-sub="plaquettes" onclick="selectSub('plaquettes')">🅿️ Plaquettes</div>
+        <div class="choice-btn" data-sub="disques" onclick="selectSub('disques')">💿 Disques</div>
+        <div class="choice-btn" data-sub="autre" onclick="selectSub('autre')">➕ Autre</div>
+      </div>
+      <div id="autre-label-zone" style="display:none;">
+        <label>Préciser le type d'entretien "Autre"</label>
+        <input type="text" id="d-autre-label" placeholder="Ex : Batterie, courroie...">
+      </div>
+    </div>
+
+    <label>Date</label>
+    <input type="date" id="d-date">
+    <label>Coût</label>
+    <input type="text" inputmode="decimal" id="d-cout" placeholder="Ex : 65,50">
+    <label>Kilométrage</label>
+    <input type="text" inputmode="decimal" id="d-km" placeholder="Ex : 45230">
+    <label>Commentaire (optionnel)</label>
+    <textarea id="d-comment" placeholder="Note libre..."></textarea>
+
+    <button class="btn btn-depense" style="margin-top:16px;" onclick="createDepense()">Enregistrer</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-km">
+  <div class="modal-box">
+    <div class="modal-header"><h2>Mettre à jour le KM</h2><div class="close-x" onclick="closeModal('modal-km')">✕</div></div>
+    <label>Nouveau kilométrage</label>
+    <input type="text" inputmode="decimal" id="km-new" placeholder="Ex : 45230">
+    <button class="btn btn-outline" style="margin-top:16px;" onclick="updateKmOnly()">Valider</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-export">
+  <div class="modal-box">
+    <div class="modal-header"><h2>Exporter en PDF</h2><div class="close-x" onclick="closeModal('modal-export')">✕</div></div>
+    <label>Période</label>
+    <div class="date-range">
+      <input type="date" id="exp-start">
+      <input type="date" id="exp-end">
+    </div>
+    <label>Inclure</label>
+    <div class="type-choice">
+      <div class="choice-btn selected" data-exp="carburant" onclick="toggleExpFilter('carburant')">⛽ Carburant</div>
+      <div class="choice-btn selected" data-exp="entretien" onclick="toggleExpFilter('entretien')">🔧 Entretien</div>
+    </div>
+    <button class="btn btn-kpi" style="margin-top:16px;" onclick="generatePDF()">Générer le PDF</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal-box confirm-box">
+    <div class="modal-header"><h2>Confirmer la suppression</h2><div class="close-x" onclick="closeModal('modal-confirm')">✕</div></div>
+    <p>Cette action est irréversible. Voulez-vous continuer ?</p>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="closeModal('modal-confirm')">Annuler</button>
+      <button class="btn btn-danger" id="confirm-yes-btn">Supprimer</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+const STORAGE_KEY = 'monBudgetVoiture_data';
+let data = loadData();
+let currentVehicleId = null;
+let editingVehicleId = null;
+let selectedType = null;
+let selectedSubs = [];
+let selectedVType = null;
+let selectedEVType = null;
+let expFilters = { carburant:true, entretien:true };
+
+function loadData(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return { username:'', theme:'light', currency:'EUR', vehicles:[], expenses:[], kmLogs:[] };
+}
+function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function parseNum(str){
+  if(!str) return NaN;
+  return parseFloat(str.toString().replace(',','.').trim());
+}
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function fmtMoney(v){
+  const sym = data.currency === 'USD' ? '$' : '€';
+  return (Math.round(v*100)/100).toLocaleString('fr-FR') + ' ' + sym;
+}
+function vehicleTypeIcon(t){
+  return {voiture:'🚘', camion:'🚚', scooter:'🛵', moto:'🏍️', tracteur:'🚜'}[t] || '🚘';
+}
+function vehicleTypeLabel(t){
+  return {voiture:'Voiture', camion:'Camion', scooter:'Scooter', moto:'Moto', tracteur:'Tracteur / Utilitaire'}[t] || '';
+}
+
+function init(){
+  document.documentElement.setAttribute('data-theme', data.theme);
+  document.getElementById('input-username').value = data.username || '';
+  document.getElementById('d-date').value = todayStr();
+  updateSettingsUI();
+  renderGarage();
+  setTimeout(()=>{
+    const s = document.getElementById('splash-screen');
+    if(s) s.style.display='none';
+  }, 3800);
+}
+
+function openScreen(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  if(name==='garage') renderGarage();
+  if(name==='reglages') updateSettingsUI();
+}
+function switchTab(tab){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active-tab'));
+  document.querySelector('.tab-btn[data-tab="'+tab+'"]').classList.add('active-tab');
+  document.querySelectorAll('.subview').forEach(v=>v.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  if(tab==='historique') renderHistorique();
+  if(tab==='kpi') renderKPI();
+  if(tab==='suivi') renderSuiviRecent();
+}
+function openModal(id){ document.getElementById(id).classList.add('active'); }
+function closeModal(id){ document.getElementById(id).classList.remove('active'); }
+
+function renderGarage(){
+  const list = document.getElementById('garage-list');
+  if(data.vehicles.length === 0){
+    list.innerHTML = '<div class="empty-state">Aucun véhicule pour le moment.<br>Ajoutez votre premier véhicule ci-dessous 👇</div>';
+    return;
+  }
+  const currentYear = new Date().getFullYear();
+  const sorted = [...data.vehicles].sort((a,b)=> (b.favori?1:0)-(a.favori?1:0));
+  list.innerHTML = sorted.map(v=>{
+    const exp = data.expenses.filter(e=>e.vehicleId===v.id);
+    const total = exp.reduce((s,e)=>s+e.cout,0);
+    const kmParcourus = Math.max(v.kmActuel - v.kmInitial, 0);
+    const coutKm = kmParcourus > 0 ? total/kmParcourus : 0;
+    const age = v.anneeMiseEnService ? Math.max(currentYear - v.anneeMiseEnService, 0) : null;
+    const ageLabel = age !== null ? (age <= 1 ? age+' an' : age+' ans') : null;
+    return `
+      <div class="card vehicule-card" onclick="openVehicule('${v.id}')">
+        <div class="fav-icon" onclick="event.stopPropagation(); toggleFavori('${v.id}')">${v.favori ? '⭐' : '☆'}</div>
+        <div class="edit-icon" onclick="event.stopPropagation(); openEditVehicule('${v.id}')">⋯</div>
+        <div class="del-icon" onclick="event.stopPropagation(); askDeleteVehicule('${v.id}')">🗑️</div>
+        <h3>${vehicleTypeIcon(v.type)} ${escapeHtml(v.marque)} ${escapeHtml(v.modele)}</h3>
+        <span class="plate">${escapeHtml(v.immat)}</span>
+        ${ageLabel ? `<span class="age-badge">${ageLabel}</span>` : ''}
+        ${v.prixAchat ? `<span class="age-badge">Achat : ${fmtMoney(v.prixAchat)}</span>` : ''}
+        <div class="vehicule-stats">
+          <div class="stat-box"><div class="val">${v.kmActuel.toLocaleString('fr-FR')} km</div><div class="lbl">Kilométrage</div></div>
+          <div class="stat-box"><div class="val">${fmtMoney(total)}</div><div class="lbl">Coût total</div></div>
+          <div class="stat-box"><div class="val">${fmtMoney(coutKm)}</div><div class="lbl">€/km</div></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openAddVehiculeModal(){
+  selectedVType = null;
+  document.getElementById('v-marque').value='';
+  document.getElementById('v-modele').value='';
+  document.getElementById('v-immat').value='';
+  document.getElementById('v-annee').value='';
+  document.getElementById('v-prix').value='';
+  document.getElementById('v-km').value='';
+  document.querySelectorAll('#type-grid .choice-btn').forEach(b=>b.classList.remove('selected'));
+  openModal('modal-vehicule');
+}
+function selectVType(t){
+  selectedVType = t;
+  document.querySelectorAll('#type-grid .choice-btn').forEach(b=>b.classList.toggle('selected', b.dataset.vtype===t));
+}
+
+function createVehicule(){
+  const marque = document.getElementById('v-marque').value.trim();
+  const modele = document.getElementById('v-modele').value.trim();
+  const immat = document.getElementById('v-immat').value.trim();
+  const anneeStr = document.getElementById('v-annee').value.trim();
+  const prixStr = document.getElementById('v-prix').value.trim();
+  const km = parseNum(document.getElementById('v-km').value);
+  const anneeMiseEnService = parseInt(anneeStr, 10);
+  const currentYear = new Date().getFullYear();
+  if(!marque || !modele || !immat || isNaN(km)){
+    alert('Merci de remplir tous les champs obligatoires.');
+    return;
+  }
+  if(!anneeStr || isNaN(anneeMiseEnService) || anneeMiseEnService < 1950 || anneeMiseEnService > currentYear){
+    alert('Merci de saisir une année de mise en service valide (ex : 2018).');
+    return;
+  }
+  if(!selectedVType){
+    alert('Merci de choisir le type de véhicule.');
+    return;
+  }
+  let prixAchat = null;
+  if(prixStr){
+    prixAchat = parseNum(prixStr);
+    if(isNaN(prixAchat)){
+      alert("Le prix d'achat saisi est invalide.");
+      return;
+    }
+  }
+  const v = { id: uid(), marque, modele, immat, anneeMiseEnService, prixAchat, type: selectedVType, favori:false, kmInitial: km, kmActuel: km, createdAt: todayStr() };
+  data.vehicles.push(v);
+  data.kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km });
+  saveData();
+  closeModal('modal-vehicule');
+  renderGarage();
+}
+
+function askDeleteVehicule(id){
+  document.getElementById('confirm-yes-btn').onclick = ()=>{
+    data.vehicles = data.vehicles.filter(v=>v.id!==id);
+    data.expenses = data.expenses.filter(e=>e.vehicleId!==id);
+    data.kmLogs = data.kmLogs.filter(k=>k.vehicleId!==id);
+    saveData();
+    closeModal('modal-confirm');
+    renderGarage();
+  };
+  openModal('modal-confirm');
+}
+
+function toggleFavori(id){
+  const v = data.vehicles.find(x=>x.id===id);
+  if(!v) return;
+  const wasFavori = v.favori;
+  data.vehicles.forEach(x=>x.favori=false);
+  v.favori = !wasFavori;
+  saveData();
+  renderGarage();
+}
+
+function openEditVehicule(id){
+  const v = data.vehicles.find(x=>x.id===id);
+  if(!v) return;
+  editingVehicleId = id;
+  document.getElementById('e-marque').value = v.marque;
+  document.getElementById('e-modele').value = v.modele;
+  document.getElementById('e-immat').value = v.immat;
+  document.getElementById('e-annee').value = v.anneeMiseEnService || '';
+  document.getElementById('e-prix').value = v.prixAchat != null ? v.prixAchat : '';
+  selectedEVType = v.type || null;
+  document.querySelectorAll('#edit-type-grid .choice-btn').forEach(b=>b.classList.toggle('selected', b.dataset.evtype===selectedEVType));
+  openModal('modal-edit-vehicule');
+}
+function selectEVType(t){
+  selectedEVType = t;
+  document.querySelectorAll('#edit-type-grid .choice-btn').forEach(b=>b.classList.toggle('selected', b.dataset.evtype===t));
+}
+function saveEditVehicule(){
+  const v = data.vehicles.find(x=>x.id===editingVehicleId);
+  if(!v) return;
+  const marque = document.getElementById('e-marque').value.trim();
+  const modele = document.getElementById('e-modele').value.trim();
+  const immat = document.getElementById('e-immat').value.trim();
+  const anneeStr = document.getElementById('e-annee').value.trim();
+  const prixStr = document.getElementById('e-prix').value.trim();
+  const anneeMiseEnService = parseInt(anneeStr, 10);
+  const currentYear = new Date().getFullYear();
+  if(!marque || !modele || !immat){
+    alert('Merci de remplir tous les champs obligatoires.');
+    return;
+  }
+  if(!anneeStr || isNaN(anneeMiseEnService) || anneeMiseEnService < 1950 || anneeMiseEnService > currentYear){
+    alert('Merci de saisir une année de mise en service valide.');
+    return;
+  }
+  if(!selectedEVType){
+    alert('Merci de choisir le type de véhicule.');
+    return;
+  }
+  let prixAchat = null;
+  if(prixStr){
+    prixAchat = parseNum(prixStr);
+    if(isNaN(prixAchat)){
+      alert("Le prix d'achat saisi est invalide.");
+      return;
+    }
+  }
+  v.marque = marque; v.modele = modele; v.immat = immat;
+  v.anneeMiseEnService = anneeMiseEnService;
+  v.prixAchat = prixAchat;
+  v.type = selectedEVType;
+  saveData();
+  closeModal('modal-edit-vehicule');
+  renderGarage();
+  if(currentVehicleId === v.id){
+    document.getElementById('veh-title').textContent = v.marque+' '+v.modele;
+    document.getElementById('veh-plate').textContent = v.immat;
+  }
+}
+
+function openVehicule(id){
+  currentVehicleId = id;
+  const v = data.vehicles.find(x=>x.id===id);
+  if(!v) return;
+  document.getElementById('veh-title').textContent = v.marque+' '+v.modele;
+  document.getElementById('veh-plate').textContent = v.immat;
+  document.getElementById('veh-km').textContent = v.kmActuel.toLocaleString('fr-FR')+' km';
+  refreshVehStats();
+  switchTab('suivi');
+  openScreen('vehicule');
+}
+
+function refreshVehStats(){
+  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  if(!v) return;
+  const exp = data.expenses.filter(e=>e.vehicleId===v.id);
+  const total = exp.reduce((s,e)=>s+e.cout,0);
+  const kmParcourus = Math.max(v.kmActuel - v.kmInitial, 0);
+  const coutKm = kmParcourus > 0 ? total/kmParcourus : 0;
+  document.getElementById('veh-cout-total').textContent = fmtMoney(total);
+  document.getElementById('veh-cout-km').textContent = fmtMoney(coutKm);
+  document.getElementById('veh-km').textContent = v.kmActuel.toLocaleString('fr-FR')+' km';
+}
+
+function openModalDepense(){
+  selectedType = null; selectedSubs = [];
+  document.querySelectorAll('.choice-btn[data-val]').forEach(b=>b.classList.remove('selected'));
+  document.querySelectorAll('.choice-btn[data-sub]').forEach(b=>b.classList.remove('selected'));
+  document.getElementById('sub-type-zone').style.display='none';
+  document.getElementById('autre-label-zone').style.display='none';
+  document.getElementById('d-autre-label').value='';
+  document.getElementById('d-date').value = todayStr();
+  document.getElementById('d-cout').value='';
+  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  document.getElementById('d-km').value = v ? v.kmActuel : '';
+  document.getElementById('d-comment').value='';
+  openModal('modal-depense');
+}
+function selectType(t){
+  selectedType = t;
+  document.querySelectorAll('.choice-btn[data-val]').forEach(b=>b.classList.toggle('selected', b.dataset.val===t));
+  document.getElementById('sub-type-zone').style.display = t==='entretien' ? 'block' : 'none';
+  if(t!=='entretien'){
+    selectedSubs = [];
+    document.querySelectorAll('.choice-btn[data-sub]').forEach(b=>b.classList.remove('selected'));
+    document.getElementById('autre-label-zone').style.display='none';
+  }
+}
+function selectSub(s){
+  const idx = selectedSubs.indexOf(s);
+  if(idx===-1) selectedSubs.push(s); else selectedSubs.splice(idx,1);
+  document.querySelectorAll('.choice-btn[data-sub]').forEach(b=>{
+    b.classList.toggle('selected', selectedSubs.includes(b.dataset.sub));
+  });
+  document.getElementById('autre-label-zone').style.display = selectedSubs.includes('autre') ? 'block' : 'none';
+}
+function createDepense(){
+  if(!selectedType){ alert('Choisissez un type de dépense (Carburant ou Entretien).'); return; }
+  if(selectedType==='entretien' && selectedSubs.length===0){ alert("Choisissez au moins un type d'entretien."); return; }
+  let autreLabel = null;
+  if(selectedType==='entretien' && selectedSubs.includes('autre')){
+    autreLabel = document.getElementById('d-autre-label').value.trim();
+    if(!autreLabel){ alert('Merci de préciser le type d\'entretien "Autre".'); return; }
+  }
+  const date = document.getElementById('d-date').value || todayStr();
+  const cout = parseNum(document.getElementById('d-cout').value);
+  const km = parseNum(document.getElementById('d-km').value);
+  const comment = document.getElementById('d-comment').value.trim();
+  if(isNaN(cout) || isNaN(km)){ alert('Coût et kilométrage sont obligatoires.'); return; }
+
+  const e = { id: uid(), vehicleId: currentVehicleId, type: selectedType, subtypes: selectedType==='entretien' ? selectedSubs.slice() : [], autreLabel, date, cout, km, comment };
+  data.expenses.push(e);
+
+  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  if(v && km > v.kmActuel){
+    v.kmActuel = km;
+    data.kmLogs.push({ id: uid(), vehicleId: v.id, date, km });
+  }
+  saveData();
+  closeModal('modal-depense');
+  refreshVehStats();
+  renderSuiviRecent();
+}
+
+function updateKmOnly(){
+  const km = parseNum(document.getElementById('km-new').value);
+  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  if(!v || isNaN(km)){ alert('Merci de saisir un kilométrage valide.'); return; }
+  if(km < v.kmActuel){ alert('Le nouveau kilométrage doit être supérieur au kilométrage actuel.'); return; }
+  v.kmActuel = km;
+  data.kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km });
+  saveData();
+  document.getElementById('km-new').value='';
+  closeModal('modal-km');
+  refreshVehStats();
+}
+
+function renderSuiviRecent(){
+  const zone = document.getElementById('suivi-recent');
+  const list = data.expenses.filter(e=>e.vehicleId===currentVehicleId)
+    .sort((a,b)=> b.date.localeCompare(a.date)).slice(0,3);
+  if(list.length===0){ zone.innerHTML = '<div class="empty-state">Aucune opération récente.</div>'; return; }
+  zone.innerHTML = list.map(e=>histoItemHtml(e, false)).join('');
+}
+
+function renderHistorique(){
+  const zone = document.getElementById('historique-list');
+  const list = data.expenses.filter(e=>e.vehicleId===currentVehicleId)
+    .sort((a,b)=> b.date.localeCompare(a.date));
+  if(list.length===0){ zone.innerHTML = '<div class="empty-state">Aucune opération enregistrée.</div>'; return; }
+  zone.innerHTML = list.map(e=>histoItemHtml(e, true)).join('');
+}
+function histoItemHtml(e, withDelete){
+  const subtypes = e.subtypes || (e.subtype ? [e.subtype] : []);
+  let label;
+  if(e.type==='carburant'){
+    label = '⛽ Carburant';
+  } else {
+    const parts = subtypes.map(s => s==='autre' ? ('Autre'+(e.autreLabel ? ' ('+e.autreLabel+')' : '')) : subLabel(s));
+    label = '🔧 '+parts.join(', ');
+  }
+  const tagClass = e.type==='carburant' ? 'tag-carburant' : 'tag-entretien';
+  return `
+    <div class="histo-item">
+      <div class="histo-left">
+        <span class="type-tag ${tagClass}">${label}</span>
+        <div class="date">${formatDate(e.date)}</div>
+        ${e.comment ? `<div class="comment">"${escapeHtml(e.comment)}"</div>` : ''}
+      </div>
+      <div class="histo-right">
+        <div class="amount">${fmtMoney(e.cout)}</div>
+        <div class="km">${e.km.toLocaleString('fr-FR')} km</div>
+      </div>
+      ${withDelete ? `<div class="histo-del" onclick="askDeleteDepense('${e.id}')">🗑️</div>` : ''}
+    </div>`;
+}
+function subLabel(s){
+  return {pneus:'Pneus', vidange:'Vidange', plaquettes:'Plaquettes', disques:'Disques de frein', autre:'Autre'}[s] || 'Entretien';
+}
+function formatDate(d){
+  const [y,m,day] = d.split('-');
+  return day+'/'+m+'/'+y;
+}
+function askDeleteDepense(id){
+  document.getElementById('confirm-yes-btn').onclick = ()=>{
+    data.expenses = data.expenses.filter(e=>e.id!==id);
+    saveData();
+    closeModal('modal-confirm');
+    renderHistorique();
+    refreshVehStats();
+    renderSuiviRecent();
+  };
+  openModal('modal-confirm');
+}
+
+function kmAtOrBefore(vehicleId, dateStr){
+  const logs = data.kmLogs.filter(k=>k.vehicleId===vehicleId && k.date<=dateStr).sort((a,b)=>a.date.localeCompare(b.date));
+  if(logs.length===0){
+    const v = data.vehicles.find(x=>x.id===vehicleId);
+    return v ? v.kmInitial : 0;
+  }
+  return logs[logs.length-1].km;
+}
+function renderKPI(){
+  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  if(!v) return;
+  let start = document.getElementById('kpi-start').value;
+  let end = document.getElementById('kpi-end').value;
+  const allExp = data.expenses.filter(e=>e.vehicleId===currentVehicleId);
+  if(!start || !end){
+    const dates = allExp.map(e=>e.date).sort();
+    start = dates.length ? dates[0] : todayStr();
+    end = todayStr();
+    document.getElementById('kpi-start').value = start;
+    document.getElementById('kpi-end').value = end;
+  }
+  const filtered = allExp.filter(e=> e.date>=start && e.date<=end);
+  const total = filtered.reduce((s,e)=>s+e.cout,0);
+  const kmStart = kmAtOrBefore(v.id, start);
+  const kmEnd = kmAtOrBefore(v.id, end);
+  const kmDelta = Math.max(kmEnd - kmStart, 0);
+  const coutKm = kmDelta > 0 ? total/kmDelta : 0;
+
+  document.getElementById('kpi-cout-total').textContent = fmtMoney(total);
+  document.getElementById('kpi-cout-km').textContent = fmtMoney(coutKm);
+
+  const subs = ['pneus','vidange','plaquettes','disques','autre'];
+  const icons = {pneus:'🛞', vidange:'🛢️', plaquettes:'🅿️', disques:'💿', autre:'➕'};
+  const zone = document.getElementById('kpi-timelines');
+  zone.innerHTML = subs.map(s=>{
+    const entries = allExp.filter(e=> (e.subtypes && e.subtypes.includes(s)) || e.subtype===s)
+      .sort((a,b)=>a.date.localeCompare(b.date));
+    if(entries.length===0){
+      return `<div class="timeline-block"><div class="timeline-title">${icons[s]} ${subLabel(s)}</div>
+        <div class="timeline-entry"><span>Aucune donnée</span></div></div>`;
+    }
+    let rows = '';
+    for(let i=0;i<entries.length;i++){
+      const cur = entries[i];
+      if(i===0){
+        rows += `<div class="timeline-entry"><span>${formatDate(cur.date)} · ${cur.km.toLocaleString('fr-FR')} km</span><span>—</span></div>`;
+      } else {
+        const prev = entries[i-1];
+        const days = Math.round((new Date(cur.date) - new Date(prev.date))/86400000);
+        const kmDiff = cur.km - prev.km;
+        rows += `<div class="timeline-entry"><span>${formatDate(cur.date)} · ${cur.km.toLocaleString('fr-FR')} km</span><span>+${days}j / +${kmDiff.toLocaleString('fr-FR')}km</span></div>`;
+      }
+    }
+    return `<div class="timeline-block"><div class="timeline-title">${icons[s]} ${subLabel(s)}</div>${rows}</div>`;
+  }).join('');
+}
+
+function openExportModal(){
+  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  if(!v) return;
+  const dates = data.expenses.filter(e=>e.vehicleId===currentVehicleId).map(e=>e.date).sort();
+  document.getElementById('exp-start').value = dates.length ? dates[0] : todayStr();
+  document.getElementById('exp-end').value = todayStr();
+  expFilters = { carburant:true, entretien:true };
+  document.querySelectorAll('.choice-btn[data-exp]').forEach(b=>b.classList.add('selected'));
+  openModal('modal-export');
+}
+function toggleExpFilter(type){
+  const willBe = !expFilters[type];
+  const otherActive = Object.keys(expFilters).some(k=>k!==type && expFilters[k]);
+  if(!willBe && !otherActive){ return; }
+  expFilters[type] = willBe;
+  document.querySelector('.choice-btn[data-exp="'+type+'"]').classList.toggle('selected', willBe);
+}
+function generatePDF(){
+  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  if(!v) return;
+  const start = document.getElementById('exp-start').value;
+  const end = document.getElementById('exp-end').value;
+  if(!start || !end){ alert('Merci de choisir une période.'); return; }
+  const typesActifs = Object.keys(expFilters).filter(k=>expFilters[k]);
+  const filtered = data.expenses.filter(e=> e.vehicleId===v.id && e.date>=start && e.date<=end && typesActifs.includes(e.type))
+    .sort((a,b)=>a.date.localeCompare(b.date));
+
+  if(!window.jspdf){
+    alert("Le module PDF n'a pas pu se charger. Vérifiez votre connexion internet et réessayez.");
+    return;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  let y = 18;
+  doc.setFontSize(16);
+  doc.text('Rapport - '+v.marque+' '+v.modele, 14, y); y+=8;
+  doc.setFontSize(10);
+  doc.text('Immatriculation : '+v.immat, 14, y); y+=6;
+  if(v.anneeMiseEnService){ doc.text('Année de mise en service : '+v.anneeMiseEnService, 14, y); y+=6; }
+  if(v.type){ doc.text('Type de véhicule : '+vehicleTypeLabel(v.type), 14, y); y+=6; }
+  if(v.prixAchat){ doc.text("Prix d'achat : "+fmtMoney(v.prixAchat), 14, y); y+=6; }
+  doc.text('Kilométrage actuel : '+v.kmActuel.toLocaleString('fr-FR')+' km', 14, y); y+=6;
+  doc.text('Période du rapport : '+formatDate(start)+' au '+formatDate(end), 14, y); y+=10;
+
+  const total = filtered.reduce((s,e)=>s+e.cout,0);
+  const kmStart = kmAtOrBefore(v.id, start);
+  const kmEnd = kmAtOrBefore(v.id, end);
+  const kmDelta = Math.max(kmEnd - kmStart, 0);
+  const coutKm = kmDelta>0 ? total/kmDelta : 0;
+  doc.setFontSize(12);
+  doc.text('Coût total période : '+fmtMoney(total), 14, y); y+=6;
+  doc.text('Coût au km période : '+fmtMoney(coutKm), 14, y); y+=10;
+
+  doc.setFontSize(11);
+  doc.text('Détail des opérations', 14, y); y+=7;
+  doc.setFontSize(9);
+  if(filtered.length===0){
+    doc.text('Aucune opération sur cette période.', 14, y); y+=6;
+  } else {
+    filtered.forEach(e=>{
+      if(y > 275){ doc.addPage(); y = 18; }
+      const subtypes = e.subtypes || (e.subtype ? [e.subtype] : []);
+      let typeLabel;
+      if(e.type==='carburant'){ typeLabel='Carburant'; }
+      else {
+        const parts = subtypes.map(s => s==='autre' ? ('Autre'+(e.autreLabel?' ('+e.autreLabel+')':'')) : subLabel(s));
+        typeLabel = 'Entretien - '+parts.join(', ');
+      }
+      const line = formatDate(e.date)+'  |  '+typeLabel+'  |  '+e.km.toLocaleString('fr-FR')+' km  |  '+fmtMoney(e.cout);
+      doc.text(line, 14, y); y+=5.5;
+      if(e.comment){
+        doc.setFontSize(8);
+        doc.text('   Note : '+e.comment, 14, y); y+=5;
+        doc.setFontSize(9);
+      }
+    });
+  }
+
+  doc.save('rapport_'+v.immat.replace(/\s/g,'')+'_'+todayStr()+'.pdf');
+  closeModal('modal-export');
+}
+
+function updateSettingsUI(){
+  document.getElementById('opt-light').classList.toggle('active-opt', data.theme==='light');
+  document.getElementById('opt-dark').classList.toggle('active-opt', data.theme==='dark');
+  document.getElementById('opt-eur').classList.toggle('active-opt', data.currency==='EUR');
+  document.getElementById('opt-usd').classList.toggle('active-opt', data.currency==='USD');
+  document.getElementById('input-username').value = data.username || '';
+}
+function saveUsername(){
+  data.username = document.getElementById('input-username').value;
+  saveData();
+}
+function setTheme(t){
+  data.theme = t;
+  document.documentElement.setAttribute('data-theme', t);
+  saveData();
+  updateSettingsUI();
+}
+function setCurrency(c){
+  data.currency = c;
+  saveData();
+  updateSettingsUI();
+  renderGarage();
+  if(currentVehicleId){ refreshVehStats(); renderSuiviRecent(); }
+}
+
+function escapeHtml(str){
+  return (str||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+init();
+</script>
+</body>
+  </html>
