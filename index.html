@@ -681,8 +681,7 @@ function renderBilan(){
   }
   const valeurEstimee = estimateResaleValue(v);
   const totalFrais = data.expenses.filter(e=>e.vehicleId===v.id).reduce((s,e)=>s+e.cout,0);
-  const perteValeur = v.prixAchat - valeurEstimee;
-  const coutPossession = perteValeur + totalFrais;
+  const coutPossession = v.prixAchat + totalFrais;
   box.innerHTML = `
     <div class="kpi-mini-row">
       <div class="kpi-mini"><div class="v">${fmtMoney(v.prixAchat)}</div><div class="l">Prix d'achat</div></div>
@@ -692,7 +691,7 @@ function renderBilan(){
       <div class="kpi-mini"><div class="v">${fmtMoney(totalFrais)}</div><div class="l">Frais engagés</div></div>
       <div class="kpi-mini"><div class="v">${fmtMoney(coutPossession)}</div><div class="l">Coût de possession</div></div>
     </div>
-    <div style="font-size:11px; color:var(--text-secondary); text-align:center; margin-top:6px;">Estimation indicative (dépréciation ~15%/an), à titre de repère uniquement.</div>`;
+    <div style="font-size:11px; color:var(--text-secondary); text-align:center; margin-top:6px;">Coût de possession = prix d'achat + frais engagés. Valeur estimée = cote de revente indicative (dépréciation ~15%/an), donnée séparément à titre de repère.</div>`;
 }
 function renderTrend(){
   const v = data.vehicles.find(x=>x.id===currentVehicleId);
@@ -1464,4 +1463,4 @@ function escapeHtml(str){
 init();
 </script>
 </body>
-  </html>
+</html>
