@@ -159,7 +159,7 @@ body{
 }
 
 label{font-size:12px; font-weight:600; color:var(--text-secondary); display:block; margin:10px 0 4px;}
-input[type="text"], input[type="date"], select, textarea{
+input[type="text"], input[type="date"], input[type="password"], select, textarea{
   width:100%; padding:12px; border-radius:12px; border:1px solid var(--border);
   background:var(--bg); color:var(--text); font-size:15px; font-family:inherit;
 }
@@ -230,7 +230,21 @@ textarea{resize:none; height:60px;}
 
 <div class="container">
 
-  <div class="screen active" id="screen-garage">
+  <div class="screen" id="screen-auth">
+    <div class="topbar" style="justify-content:center; margin-top:20px;">
+      <h1>🚗 Mon Budget Voiture</h1>
+    </div>
+    <div class="card">
+      <label>Email</label>
+      <input type="text" id="auth-email" placeholder="vous@email.com" autocapitalize="off" autocomplete="email">
+      <label>Mot de passe</label>
+      <input type="password" id="auth-password" placeholder="6 caractères minimum">
+      <button class="btn btn-garage" style="margin-top:16px;" onclick="signIn()">Se connecter</button>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="signUp()">Créer un compte</button>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-garage">
     <div class="topbar">
       <h1>🚗 Mon Garage</h1>
       <div class="icon-btn" onclick="openScreen('reglages')">⚙️</div>
@@ -337,6 +351,7 @@ textarea{resize:none; height:60px;}
         </div>
       </div>
     </div>
+    <button class="btn btn-outline" onclick="signOut()">🚪 Se déconnecter</button>
   </div>
 
 </div>
@@ -507,10 +522,18 @@ textarea{resize:none; height:60px;}
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
-const STORAGE_KEY = 'monBudgetVoiture_data';
-let data = loadData();
+const SUPABASE_URL = 'https://akrkdxgoeajvpiydajnz.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFrcmtkeGdvZWFqdnBpeWRham56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMzAxMDgsImV4cCI6MjA5OTcwNjEwOH0.eTddZgAabrbJi7-M4wOBfZ7M5Kb98RxHT4kU1z8dUrw';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+let profile = { username:'', theme:'light', currency:'EUR' };
+let vehicles = [];
+let expenses = [];
+let kmLogs = [];
 let currentVehicleId = null;
 let editingVehicleId = null;
 let selectedType = null;
@@ -518,15 +541,8 @@ let selectedSubs = [];
 let selectedVType = null;
 let selectedEVType = null;
 let expFilters = { carburant:true, entretien:true };
+let usernameSaveTimeout = null;
 
-function loadData(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw) return JSON.parse(raw);
-  }catch(e){}
-  return { username:'', theme:'light', currency:'EUR', vehicles:[], expenses:[], kmLogs:[] };
-}
-function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 function parseNum(str){
   if(!str) return NaN;
@@ -534,7 +550,7 @@ function parseNum(str){
 }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function fmtMoney(v){
-  const sym = data.currency === 'USD' ? '$' : '€';
+  const sym = profile.currency === 'USD' ? '$' : '€';
   return (Math.round(v*100)/100).toLocaleString('fr-FR') + ' ' + sym;
 }
 function vehicleTypeIcon(t){
@@ -544,16 +560,105 @@ function vehicleTypeLabel(t){
   return {voiture:'Voiture', camion:'Camion', scooter:'Scooter', moto:'Moto', tracteur:'Tracteur / Utilitaire'}[t] || '';
 }
 
-function init(){
-  document.documentElement.setAttribute('data-theme', data.theme);
-  document.getElementById('input-username').value = data.username || '';
+function mapVehicleFromDb(row){
+  return {
+    id: row.id,
+    marque: row.marque,
+    modele: row.modele,
+    immat: row.immat,
+    anneeMiseEnService: row.annee_mise_en_service,
+    prixAchat: row.prix_achat != null ? Number(row.prix_achat) : null,
+    type: row.type,
+    favori: row.favori,
+    kmInitial: Number(row.km_initial),
+    kmActuel: Number(row.km_actuel),
+    intervalVidange: row.interval_vidange != null ? Number(row.interval_vidange) : null,
+    intervalPneus: row.interval_pneus != null ? Number(row.interval_pneus) : null,
+    intervalChaine: row.interval_chaine != null ? Number(row.interval_chaine) : null,
+    dateCT: row.date_ct,
+    dateAssurance: row.date_assurance
+  };
+}
+function mapExpenseFromDb(row){
+  return {
+    id: row.id,
+    vehicleId: row.vehicle_id,
+    type: row.type,
+    subtypes: row.subtypes || [],
+    autreLabel: row.autre_label,
+    date: row.date,
+    cout: Number(row.cout),
+    km: Number(row.km),
+    comment: row.comment || ''
+  };
+}
+function mapKmLogFromDb(row){
+  return { id: row.id, vehicleId: row.vehicle_id, date: row.date, km: Number(row.km) };
+}
+
+async function init(){
+  const { data: sessionData } = await sb.auth.getSession();
+  if(sessionData && sessionData.session){
+    currentUser = sessionData.session.user;
+    await loadAllData();
+    openScreen('garage');
+  } else {
+    openScreen('auth');
+  }
+  const s = document.getElementById('splash-screen');
+  if(s) setTimeout(()=>{ s.style.display='none'; }, 3800);
+}
+
+async function loadAllData(){
+  const { data: prof } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  if(prof){ profile = { username: prof.username||'', theme: prof.theme||'light', currency: prof.currency||'EUR' }; }
+  document.documentElement.setAttribute('data-theme', profile.theme);
+  document.getElementById('input-username').value = profile.username;
   document.getElementById('d-date').value = todayStr();
   updateSettingsUI();
+
+  const { data: v } = await sb.from('vehicles').select('*').order('created_at');
+  vehicles = (v||[]).map(mapVehicleFromDb);
+  const { data: e } = await sb.from('expenses').select('*').order('date');
+  expenses = (e||[]).map(mapExpenseFromDb);
+  const { data: k } = await sb.from('km_logs').select('*');
+  kmLogs = (k||[]).map(mapKmLogFromDb);
+
   renderGarage();
-  setTimeout(()=>{
-    const s = document.getElementById('splash-screen');
-    if(s) s.style.display='none';
-  }, 3800);
+}
+
+async function signUp(){
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  if(!email || !password){ alert('Merci de remplir email et mot de passe.'); return; }
+  if(password.length < 6){ alert('Le mot de passe doit faire au moins 6 caractères.'); return; }
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if(error){ alert('Erreur : '+error.message); return; }
+  if(data.session){
+    currentUser = data.user;
+    await loadAllData();
+    openScreen('garage');
+  } else {
+    alert('Compte créé ! Vérifiez votre email pour confirmer votre inscription, puis connectez-vous.');
+  }
+}
+async function signIn(){
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  if(!email || !password){ alert('Merci de remplir email et mot de passe.'); return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){ alert('Erreur : '+error.message); return; }
+  currentUser = data.user;
+  await loadAllData();
+  openScreen('garage');
+}
+async function signOut(){
+  await sb.auth.signOut();
+  currentUser = null;
+  vehicles = []; expenses = []; kmLogs = [];
+  document.getElementById('auth-email').value='';
+  document.getElementById('auth-password').value='';
+  openScreen('auth');
 }
 
 function openScreen(name){
@@ -586,7 +691,7 @@ function openConfirm(message, onConfirm){
 /* ============ MAINTENANCE ALERTS ============ */
 function computeMaintProgress(v, subKey, intervalKm){
   if(!intervalKm || intervalKm<=0) return null;
-  const exp = data.expenses.filter(e=> e.vehicleId===v.id && e.subtypes && e.subtypes.includes(subKey));
+  const exp = expenses.filter(e=> e.vehicleId===v.id && e.subtypes && e.subtypes.includes(subKey));
   let baseKm = v.kmInitial;
   if(exp.length){
     const last = exp.reduce((max,e)=> e.km>max.km?e:max, exp[0]);
@@ -631,7 +736,7 @@ function garageAlerts(v){
   return alerts;
 }
 function renderMaintTracker(){
-  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const v = vehicles.find(x=>x.id===currentVehicleId);
   const card = document.getElementById('maint-tracker-card');
   if(!card) return;
   if(!v){ card.innerHTML=''; return; }
@@ -672,7 +777,7 @@ function estimateResaleValue(v){
   return value;
 }
 function renderBilan(){
-  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const v = vehicles.find(x=>x.id===currentVehicleId);
   const box = document.getElementById('bilan-box');
   if(!box) return;
   if(!v || !v.prixAchat){
@@ -680,7 +785,7 @@ function renderBilan(){
     return;
   }
   const valeurEstimee = estimateResaleValue(v);
-  const totalFrais = data.expenses.filter(e=>e.vehicleId===v.id).reduce((s,e)=>s+e.cout,0);
+  const totalFrais = expenses.filter(e=>e.vehicleId===v.id).reduce((s,e)=>s+e.cout,0);
   const coutPossession = v.prixAchat + totalFrais;
   box.innerHTML = `
     <div class="kpi-mini-row">
@@ -694,11 +799,11 @@ function renderBilan(){
     <div style="font-size:11px; color:var(--text-secondary); text-align:center; margin-top:6px;">Coût de possession = prix d'achat + frais engagés. Valeur estimée = cote de revente indicative (dépréciation ~15%/an), donnée séparément à titre de repère.</div>`;
 }
 function renderTrend(){
-  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const v = vehicles.find(x=>x.id===currentVehicleId);
   const box = document.getElementById('trend-box');
   if(!box) return;
   if(!v){ box.innerHTML=''; return; }
-  const exp = data.expenses.filter(e=>e.vehicleId===v.id).sort((a,b)=>a.date.localeCompare(b.date));
+  const exp = expenses.filter(e=>e.vehicleId===v.id).sort((a,b)=>a.date.localeCompare(b.date));
   if(exp.length < 4){
     box.innerHTML = '<div class="empty-state" style="padding:12px 6px;">Pas encore assez de données pour dégager une tendance.</div>';
     return;
@@ -726,14 +831,14 @@ function renderTrend(){
 
 function renderGarage(){
   const list = document.getElementById('garage-list');
-  if(data.vehicles.length === 0){
+  if(vehicles.length === 0){
     list.innerHTML = '<div class="empty-state">Aucun véhicule pour le moment.<br>Ajoutez votre premier véhicule ci-dessous 👇</div>';
     return;
   }
   const currentYear = new Date().getFullYear();
-  const sorted = [...data.vehicles].sort((a,b)=> (b.favori?1:0)-(a.favori?1:0));
+  const sorted = [...vehicles].sort((a,b)=> (b.favori?1:0)-(a.favori?1:0));
   list.innerHTML = sorted.map(v=>{
-    const exp = data.expenses.filter(e=>e.vehicleId===v.id);
+    const exp = expenses.filter(e=>e.vehicleId===v.id);
     const total = exp.reduce((s,e)=>s+e.cout,0);
     const kmParcourus = Math.max(v.kmActuel - v.kmInitial, 0);
     const coutKm = kmParcourus > 0 ? total/kmParcourus : 0;
@@ -782,7 +887,7 @@ function selectVType(t){
   document.getElementById('v-chaine-zone').style.display = t==='moto' ? 'block' : 'none';
 }
 
-function createVehicule(){
+async function createVehicule(){
   const marque = document.getElementById('v-marque').value.trim();
   const modele = document.getElementById('v-modele').value.trim();
   const immat = document.getElementById('v-immat').value.trim();
@@ -820,41 +925,60 @@ function createVehicule(){
   const intervalPneus = intPneusStr ? parseNum(intPneusStr) : null;
   const intervalChaine = intChaineStr ? parseNum(intChaineStr) : null;
 
-  const v = { id: uid(), marque, modele, immat, anneeMiseEnService, prixAchat, type: selectedVType, favori:false,
-    intervalVidange: (intervalVidange!=null && !isNaN(intervalVidange)) ? intervalVidange : null,
-    intervalPneus: (intervalPneus!=null && !isNaN(intervalPneus)) ? intervalPneus : null,
-    intervalChaine: (intervalChaine!=null && !isNaN(intervalChaine)) ? intervalChaine : null,
-    dateCT, dateAssurance,
-    kmInitial: km, kmActuel: km, createdAt: todayStr() };
-  data.vehicles.push(v);
-  data.kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km });
-  saveData();
+  const insertObj = {
+    user_id: currentUser.id,
+    marque, modele, immat,
+    annee_mise_en_service: anneeMiseEnService,
+    prix_achat: prixAchat,
+    type: selectedVType,
+    favori: false,
+    km_initial: km,
+    km_actuel: km,
+    interval_vidange: (intervalVidange!=null && !isNaN(intervalVidange)) ? intervalVidange : null,
+    interval_pneus: (intervalPneus!=null && !isNaN(intervalPneus)) ? intervalPneus : null,
+    interval_chaine: (intervalChaine!=null && !isNaN(intervalChaine)) ? intervalChaine : null,
+    date_ct: dateCT,
+    date_assurance: dateAssurance
+  };
+  const { data: inserted, error } = await sb.from('vehicles').insert(insertObj).select().single();
+  if(error){ alert('Erreur : '+error.message); return; }
+  const v = mapVehicleFromDb(inserted);
+  vehicles.push(v);
+  await sb.from('km_logs').insert({ user_id: currentUser.id, vehicle_id: v.id, date: todayStr(), km });
+  kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km });
   closeModal('modal-vehicule');
   renderGarage();
 }
 
 function askDeleteVehicule(id){
-  openConfirm('Cette action est irréversible. Voulez-vous continuer ?', ()=>{
-    data.vehicles = data.vehicles.filter(v=>v.id!==id);
-    data.expenses = data.expenses.filter(e=>e.vehicleId!==id);
-    data.kmLogs = data.kmLogs.filter(k=>k.vehicleId!==id);
-    saveData();
+  openConfirm('Cette action est irréversible. Voulez-vous continuer ?', async ()=>{
+    const { error } = await sb.from('vehicles').delete().eq('id', id);
+    if(error){ alert('Erreur : '+error.message); return; }
+    vehicles = vehicles.filter(v=>v.id!==id);
+    expenses = expenses.filter(e=>e.vehicleId!==id);
+    kmLogs = kmLogs.filter(k=>k.vehicleId!==id);
     renderGarage();
   });
 }
 
-function toggleFavori(id){
-  const v = data.vehicles.find(x=>x.id===id);
+async function toggleFavori(id){
+  const v = vehicles.find(x=>x.id===id);
   if(!v) return;
-  const wasFavori = v.favori;
-  data.vehicles.forEach(x=>x.favori=false);
-  v.favori = !wasFavori;
-  saveData();
+  const newValue = !v.favori;
+  if(newValue){
+    const others = vehicles.filter(x=>x.favori && x.id!==id);
+    for(const o of others){
+      o.favori = false;
+      await sb.from('vehicles').update({favori:false}).eq('id', o.id);
+    }
+  }
+  v.favori = newValue;
+  await sb.from('vehicles').update({favori:newValue}).eq('id', id);
   renderGarage();
 }
 
 function openEditVehicule(id){
-  const v = data.vehicles.find(x=>x.id===id);
+  const v = vehicles.find(x=>x.id===id);
   if(!v) return;
   editingVehicleId = id;
   document.getElementById('e-marque').value = v.marque;
@@ -877,8 +1001,8 @@ function selectEVType(t){
   document.querySelectorAll('#edit-type-grid .choice-btn').forEach(b=>b.classList.toggle('selected', b.dataset.evtype===t));
   document.getElementById('e-chaine-zone').style.display = t==='moto' ? 'block' : 'none';
 }
-function saveEditVehicule(){
-  const v = data.vehicles.find(x=>x.id===editingVehicleId);
+async function saveEditVehicule(){
+  const v = vehicles.find(x=>x.id===editingVehicleId);
   if(!v) return;
   const marque = document.getElementById('e-marque').value.trim();
   const modele = document.getElementById('e-modele').value.trim();
@@ -916,16 +1040,29 @@ function saveEditVehicule(){
   const intervalPneus = intPneusStr ? parseNum(intPneusStr) : null;
   const intervalChaine = intChaineStr ? parseNum(intChaineStr) : null;
 
+  const updateObj = {
+    marque, modele, immat,
+    annee_mise_en_service: anneeMiseEnService,
+    prix_achat: prixAchat,
+    type: selectedEVType,
+    interval_vidange: (intervalVidange!=null && !isNaN(intervalVidange)) ? intervalVidange : null,
+    interval_pneus: (intervalPneus!=null && !isNaN(intervalPneus)) ? intervalPneus : null,
+    interval_chaine: (intervalChaine!=null && !isNaN(intervalChaine)) ? intervalChaine : null,
+    date_ct: dateCT,
+    date_assurance: dateAssurance
+  };
+  const { error } = await sb.from('vehicles').update(updateObj).eq('id', editingVehicleId);
+  if(error){ alert('Erreur : '+error.message); return; }
+
   v.marque = marque; v.modele = modele; v.immat = immat;
   v.anneeMiseEnService = anneeMiseEnService;
   v.prixAchat = prixAchat;
   v.type = selectedEVType;
-  v.intervalVidange = (intervalVidange!=null && !isNaN(intervalVidange)) ? intervalVidange : null;
-  v.intervalPneus = (intervalPneus!=null && !isNaN(intervalPneus)) ? intervalPneus : null;
-  v.intervalChaine = (intervalChaine!=null && !isNaN(intervalChaine)) ? intervalChaine : null;
+  v.intervalVidange = updateObj.interval_vidange;
+  v.intervalPneus = updateObj.interval_pneus;
+  v.intervalChaine = updateObj.interval_chaine;
   v.dateCT = dateCT;
   v.dateAssurance = dateAssurance;
-  saveData();
   closeModal('modal-edit-vehicule');
   renderGarage();
   if(currentVehicleId === v.id){
@@ -937,7 +1074,7 @@ function saveEditVehicule(){
 
 function openVehicule(id){
   currentVehicleId = id;
-  const v = data.vehicles.find(x=>x.id===id);
+  const v = vehicles.find(x=>x.id===id);
   if(!v) return;
   document.getElementById('veh-title').textContent = v.marque+' '+v.modele;
   document.getElementById('veh-plate').textContent = v.immat;
@@ -948,9 +1085,9 @@ function openVehicule(id){
 }
 
 function refreshVehStats(){
-  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const v = vehicles.find(x=>x.id===currentVehicleId);
   if(!v) return;
-  const exp = data.expenses.filter(e=>e.vehicleId===v.id);
+  const exp = expenses.filter(e=>e.vehicleId===v.id);
   const total = exp.reduce((s,e)=>s+e.cout,0);
   const kmParcourus = Math.max(v.kmActuel - v.kmInitial, 0);
   const coutKm = kmParcourus > 0 ? total/kmParcourus : 0;
@@ -968,7 +1105,7 @@ function openModalDepense(){
   document.getElementById('d-autre-label').value='';
   document.getElementById('d-date').value = todayStr();
   document.getElementById('d-cout').value='';
-  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const v = vehicles.find(x=>x.id===currentVehicleId);
   document.getElementById('d-km').value = v ? v.kmActuel : '';
   document.getElementById('d-comment').value='';
   const chaineBtn = document.getElementById('sub-chaine-btn');
@@ -993,7 +1130,7 @@ function selectSub(s){
   });
   document.getElementById('autre-label-zone').style.display = selectedSubs.includes('autre') ? 'block' : 'none';
 }
-function createDepense(){
+async function createDepense(){
   if(!selectedType){ alert('Choisissez un type de dépense (Carburant ou Entretien).'); return; }
   if(selectedType==='entretien' && selectedSubs.length===0){ alert("Choisissez au moins un type d'entretien."); return; }
   let autreLabel = null;
@@ -1007,24 +1144,34 @@ function createDepense(){
   const comment = document.getElementById('d-comment').value.trim();
   if(isNaN(cout) || isNaN(km)){ alert('Coût et kilométrage sont obligatoires.'); return; }
 
-  const e = { id: uid(), vehicleId: currentVehicleId, type: selectedType, subtypes: selectedType==='entretien' ? selectedSubs.slice() : [], autreLabel, date, cout, km, comment };
-  data.expenses.push(e);
+  const insertObj = {
+    user_id: currentUser.id,
+    vehicle_id: currentVehicleId,
+    type: selectedType,
+    subtypes: selectedType==='entretien' ? selectedSubs.slice() : [],
+    autre_label: autreLabel,
+    date, cout, km, comment
+  };
+  const { data: inserted, error } = await sb.from('expenses').insert(insertObj).select().single();
+  if(error){ alert('Erreur : '+error.message); return; }
+  expenses.push(mapExpenseFromDb(inserted));
 
-  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const v = vehicles.find(x=>x.id===currentVehicleId);
   if(v && km > v.kmActuel){
+    await sb.from('vehicles').update({km_actuel: km}).eq('id', v.id);
     v.kmActuel = km;
-    data.kmLogs.push({ id: uid(), vehicleId: v.id, date, km });
+    await sb.from('km_logs').insert({ user_id: currentUser.id, vehicle_id: v.id, date, km });
+    kmLogs.push({ id: uid(), vehicleId: v.id, date, km });
   }
-  saveData();
   closeModal('modal-depense');
   refreshVehStats();
   renderSuiviRecent();
   renderMaintTracker();
 }
 
-function updateKmOnly(){
+async function updateKmOnly(){
   const km = parseNum(document.getElementById('km-new').value);
-  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const v = vehicles.find(x=>x.id===currentVehicleId);
   if(!v || isNaN(km)){ alert('Merci de saisir un kilométrage valide.'); return; }
   if(km < v.kmActuel){
     openConfirm('Le kilométrage saisi ('+Math.round(km).toLocaleString('fr-FR')+' km) est inférieur au kilométrage actuel ('+v.kmActuel.toLocaleString('fr-FR')+' km). Voulez-vous forcer cette valeur ?', ()=>{
@@ -1034,10 +1181,12 @@ function updateKmOnly(){
   }
   applyKmUpdate(v, km);
 }
-function applyKmUpdate(v, km){
+async function applyKmUpdate(v, km){
+  const { error } = await sb.from('vehicles').update({ km_actuel: km }).eq('id', v.id);
+  if(error){ alert('Erreur : '+error.message); return; }
   v.kmActuel = km;
-  data.kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km });
-  saveData();
+  await sb.from('km_logs').insert({ user_id: currentUser.id, vehicle_id: v.id, date: todayStr(), km });
+  kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km });
   document.getElementById('km-new').value='';
   closeModal('modal-km');
   refreshVehStats();
@@ -1055,10 +1204,10 @@ function togglePeKm(){
   const zone = document.getElementById('pe-km-zone');
   zone.style.display = zone.style.display==='none' ? 'block' : 'none';
 }
-function savePleinExpress(){
+async function savePleinExpress(){
   const cout = parseNum(document.getElementById('pe-cout').value);
   if(isNaN(cout)){ alert('Merci de saisir un montant valide.'); return; }
-  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const v = vehicles.find(x=>x.id===currentVehicleId);
   if(!v) return;
   let km = v.kmActuel;
   const kmZoneVisible = document.getElementById('pe-km-zone').style.display === 'block';
@@ -1068,13 +1217,16 @@ function savePleinExpress(){
       km = newKm;
     }
   }
-  const e = { id: uid(), vehicleId: v.id, type:'carburant', subtypes:[], autreLabel:null, date: todayStr(), cout, km, comment:'' };
-  data.expenses.push(e);
+  const insertObj = { user_id: currentUser.id, vehicle_id: v.id, type:'carburant', subtypes:[], autre_label:null, date: todayStr(), cout, km, comment:'' };
+  const { data: inserted, error } = await sb.from('expenses').insert(insertObj).select().single();
+  if(error){ alert('Erreur : '+error.message); return; }
+  expenses.push(mapExpenseFromDb(inserted));
   if(km > v.kmActuel){
+    await sb.from('vehicles').update({km_actuel: km}).eq('id', v.id);
     v.kmActuel = km;
-    data.kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km });
+    await sb.from('km_logs').insert({ user_id: currentUser.id, vehicle_id: v.id, date: todayStr(), km });
+    kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km });
   }
-  saveData();
   closeModal('modal-plein-express');
   refreshVehStats();
   renderSuiviRecent();
@@ -1083,7 +1235,7 @@ function savePleinExpress(){
 
 function renderSuiviRecent(){
   const zone = document.getElementById('suivi-recent');
-  const list = data.expenses.filter(e=>e.vehicleId===currentVehicleId)
+  const list = expenses.filter(e=>e.vehicleId===currentVehicleId)
     .sort((a,b)=> b.date.localeCompare(a.date)).slice(0,3);
   if(list.length===0){ zone.innerHTML = '<div class="empty-state">Aucune opération récente.</div>'; return; }
   zone.innerHTML = list.map(e=>histoItemHtml(e, false)).join('');
@@ -1091,13 +1243,13 @@ function renderSuiviRecent(){
 
 function renderHistorique(){
   const zone = document.getElementById('historique-list');
-  const list = data.expenses.filter(e=>e.vehicleId===currentVehicleId)
+  const list = expenses.filter(e=>e.vehicleId===currentVehicleId)
     .sort((a,b)=> b.date.localeCompare(a.date));
   if(list.length===0){ zone.innerHTML = '<div class="empty-state">Aucune opération enregistrée.</div>'; return; }
   zone.innerHTML = list.map(e=>histoItemHtml(e, true)).join('');
 }
 function histoItemHtml(e, withDelete){
-  const subtypes = e.subtypes || (e.subtype ? [e.subtype] : []);
+  const subtypes = e.subtypes || [];
   let label;
   if(e.type==='carburant'){
     label = '⛽ Carburant';
@@ -1128,9 +1280,10 @@ function formatDate(d){
   return day+'/'+m+'/'+y;
 }
 function askDeleteDepense(id){
-  openConfirm('Cette action est irréversible. Voulez-vous continuer ?', ()=>{
-    data.expenses = data.expenses.filter(e=>e.id!==id);
-    saveData();
+  openConfirm('Cette action est irréversible. Voulez-vous continuer ?', async ()=>{
+    const { error } = await sb.from('expenses').delete().eq('id', id);
+    if(error){ alert('Erreur : '+error.message); return; }
+    expenses = expenses.filter(e=>e.id!==id);
     renderHistorique();
     refreshVehStats();
     renderSuiviRecent();
@@ -1139,19 +1292,19 @@ function askDeleteDepense(id){
 }
 
 function kmAtOrBefore(vehicleId, dateStr){
-  const logs = data.kmLogs.filter(k=>k.vehicleId===vehicleId && k.date<=dateStr).sort((a,b)=>a.date.localeCompare(b.date));
+  const logs = kmLogs.filter(k=>k.vehicleId===vehicleId && k.date<=dateStr).sort((a,b)=>a.date.localeCompare(b.date));
   if(logs.length===0){
-    const v = data.vehicles.find(x=>x.id===vehicleId);
+    const v = vehicles.find(x=>x.id===vehicleId);
     return v ? v.kmInitial : 0;
   }
   return logs[logs.length-1].km;
 }
 function renderKPI(){
-  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const v = vehicles.find(x=>x.id===currentVehicleId);
   if(!v) return;
   let start = document.getElementById('kpi-start').value;
   let end = document.getElementById('kpi-end').value;
-  const allExp = data.expenses.filter(e=>e.vehicleId===currentVehicleId);
+  const allExp = expenses.filter(e=>e.vehicleId===currentVehicleId);
   if(!start || !end){
     const dates = allExp.map(e=>e.date).sort();
     start = dates.length ? dates[0] : todayStr();
@@ -1174,7 +1327,7 @@ function renderKPI(){
   const icons = {pneus:'🛞', vidange:'🛢️', plaquettes:'🅿️', disques:'💿', autre:'➕', chaine:'⚙️'};
   const zone = document.getElementById('kpi-timelines');
   zone.innerHTML = subs.map(s=>{
-    const entries = allExp.filter(e=> (e.subtypes && e.subtypes.includes(s)) || e.subtype===s)
+    const entries = allExp.filter(e=> e.subtypes && e.subtypes.includes(s))
       .sort((a,b)=>a.date.localeCompare(b.date));
     if(entries.length===0){
       return `<div class="timeline-block"><div class="timeline-title">${icons[s]} ${subLabel(s)}</div>
@@ -1197,9 +1350,9 @@ function renderKPI(){
 }
 
 function openExportModal(){
-  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const v = vehicles.find(x=>x.id===currentVehicleId);
   if(!v) return;
-  const dates = data.expenses.filter(e=>e.vehicleId===currentVehicleId).map(e=>e.date).sort();
+  const dates = expenses.filter(e=>e.vehicleId===currentVehicleId).map(e=>e.date).sort();
   document.getElementById('exp-start').value = dates.length ? dates[0] : todayStr();
   document.getElementById('exp-end').value = todayStr();
   expFilters = { carburant:true, entretien:true };
@@ -1214,13 +1367,13 @@ function toggleExpFilter(type){
   document.querySelector('.choice-btn[data-exp="'+type+'"]').classList.toggle('selected', willBe);
 }
 function generatePDF(){
-  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const v = vehicles.find(x=>x.id===currentVehicleId);
   if(!v) return;
   const start = document.getElementById('exp-start').value;
   const end = document.getElementById('exp-end').value;
   if(!start || !end){ alert('Merci de choisir une période.'); return; }
   const typesActifs = Object.keys(expFilters).filter(k=>expFilters[k]);
-  const filtered = data.expenses.filter(e=> e.vehicleId===v.id && e.date>=start && e.date<=end && typesActifs.includes(e.type))
+  const filtered = expenses.filter(e=> e.vehicleId===v.id && e.date>=start && e.date<=end && typesActifs.includes(e.type))
     .sort((a,b)=>a.date.localeCompare(b.date));
 
   if(!window.jspdf){
@@ -1257,7 +1410,7 @@ function generatePDF(){
   } else {
     filtered.forEach(e=>{
       if(y > 275){ doc.addPage(); y = 18; }
-      const subtypes = e.subtypes || (e.subtype ? [e.subtype] : []);
+      const subtypes = e.subtypes || [];
       let typeLabel;
       if(e.type==='carburant'){ typeLabel='Carburant'; }
       else {
@@ -1312,14 +1465,14 @@ function fallbackDownloadCSV(url, filename){
   setTimeout(()=>URL.revokeObjectURL(url), 3000);
 }
 function exportVehicleCSV(){
-  const v = data.vehicles.find(x=>x.id===currentVehicleId);
+  const v = vehicles.find(x=>x.id===currentVehicleId);
   if(!v) return;
   const rows = [];
   rows.push(['TYPE','marque','modele','immat','anneeMiseEnService','prixAchat','vtype','favori','kmInitial','kmActuel','intervalVidange','intervalPneus','intervalChaine','dateCT','dateAssurance'].map(csvEscape).join(','));
   rows.push(['VEHICULE', v.marque, v.modele, v.immat, v.anneeMiseEnService||'', v.prixAchat||'', v.type||'', v.favori?1:0, v.kmInitial, v.kmActuel, v.intervalVidange||'', v.intervalPneus||'', v.intervalChaine||'', v.dateCT||'', v.dateAssurance||''].map(csvEscape).join(','));
   rows.push('');
   rows.push(['TYPE','date','depenseType','subtypes','autreLabel','cout','km','comment'].map(csvEscape).join(','));
-  const exp = data.expenses.filter(e=>e.vehicleId===v.id).sort((a,b)=>a.date.localeCompare(b.date));
+  const exp = expenses.filter(e=>e.vehicleId===v.id).sort((a,b)=>a.date.localeCompare(b.date));
   exp.forEach(e=>{
     const subtypes = (e.subtypes||[]).join('|');
     rows.push(['DEPENSE', e.date, e.type, subtypes, e.autreLabel||'', e.cout, e.km, e.comment||''].map(csvEscape).join(','));
@@ -1359,7 +1512,7 @@ function handleCSVFileSelect(evt){
 }
 function importCSVFile(file){
   const reader = new FileReader();
-  reader.onload = function(evt){
+  reader.onload = async function(evt){
     try{
       let text = evt.target.result;
       if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
@@ -1379,48 +1532,50 @@ function importCSVFile(file){
       const anneeStr = vehicleRow[4], prixStr = vehicleRow[5], vtype = vehicleRow[6];
       const kmInitialStr = vehicleRow[8], kmActuelStr = vehicleRow[9];
       const intVidangeStr = vehicleRow[10], intPneusStr = vehicleRow[11], intChaineStr = vehicleRow[12];
-      const dateCT = vehicleRow[13], dateAssurance = vehicleRow[14];
+      const dateCT = vehicleRow[13] || null, dateAssurance = vehicleRow[14] || null;
 
-      const newVehicleId = uid();
-      const v = {
-        id: newVehicleId,
+      const insertObj = {
+        user_id: currentUser.id,
         marque: marque || 'Véhicule',
         modele: modele || 'importé',
         immat: immat || '',
-        anneeMiseEnService: anneeStr ? parseInt(anneeStr,10) : null,
-        prixAchat: prixStr ? parseNum(prixStr) : null,
+        annee_mise_en_service: anneeStr ? parseInt(anneeStr,10) : null,
+        prix_achat: prixStr ? parseNum(prixStr) : null,
         type: vtype || 'voiture',
         favori: false,
-        kmInitial: kmInitialStr ? parseNum(kmInitialStr) : 0,
-        kmActuel: kmActuelStr ? parseNum(kmActuelStr) : 0,
-        intervalVidange: intVidangeStr ? parseNum(intVidangeStr) : null,
-        intervalPneus: intPneusStr ? parseNum(intPneusStr) : null,
-        intervalChaine: intChaineStr ? parseNum(intChaineStr) : null,
-        dateCT: dateCT || null,
-        dateAssurance: dateAssurance || null,
-        createdAt: todayStr()
+        km_initial: kmInitialStr ? parseNum(kmInitialStr) : 0,
+        km_actuel: kmActuelStr ? parseNum(kmActuelStr) : 0,
+        interval_vidange: intVidangeStr ? parseNum(intVidangeStr) : null,
+        interval_pneus: intPneusStr ? parseNum(intPneusStr) : null,
+        interval_chaine: intChaineStr ? parseNum(intChaineStr) : null,
+        date_ct: dateCT,
+        date_assurance: dateAssurance
       };
-      data.vehicles.push(v);
-      data.kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km: v.kmActuel });
+      const { data: inserted, error } = await sb.from('vehicles').insert(insertObj).select().single();
+      if(error){ alert('Erreur : '+error.message); return; }
+      const v = mapVehicleFromDb(inserted);
+      vehicles.push(v);
+      await sb.from('km_logs').insert({ user_id: currentUser.id, vehicle_id: v.id, date: todayStr(), km: v.kmActuel });
+      kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km: v.kmActuel });
 
-      expenseRows.forEach(cols=>{
+      for(const cols of expenseRows){
         const date = cols[1], depenseType = cols[2], subtypesStr = cols[3], autreLabel = cols[4];
         const coutStr = cols[5], kmStr = cols[6], comment = cols[7];
-        const e = {
-          id: uid(),
-          vehicleId: v.id,
+        const expInsert = {
+          user_id: currentUser.id,
+          vehicle_id: v.id,
           type: depenseType || 'carburant',
           subtypes: subtypesStr ? subtypesStr.split('|').filter(Boolean) : [],
-          autreLabel: autreLabel || null,
+          autre_label: autreLabel || null,
           date: date || todayStr(),
           cout: coutStr ? parseNum(coutStr) : 0,
           km: kmStr ? parseNum(kmStr) : v.kmInitial,
           comment: comment || ''
         };
-        data.expenses.push(e);
-      });
+        const { data: expIns, error: expErr } = await sb.from('expenses').insert(expInsert).select().single();
+        if(!expErr && expIns) expenses.push(mapExpenseFromDb(expIns));
+      }
 
-      saveData();
       renderGarage();
       alert('Véhicule importé avec succès : '+v.marque+' '+v.modele);
       openScreen('garage');
@@ -1432,28 +1587,32 @@ function importCSVFile(file){
 }
 
 function updateSettingsUI(){
-  document.getElementById('opt-light').classList.toggle('active-opt', data.theme==='light');
-  document.getElementById('opt-dark').classList.toggle('active-opt', data.theme==='dark');
-  document.getElementById('opt-eur').classList.toggle('active-opt', data.currency==='EUR');
-  document.getElementById('opt-usd').classList.toggle('active-opt', data.currency==='USD');
-  document.getElementById('input-username').value = data.username || '';
+  document.getElementById('opt-light').classList.toggle('active-opt', profile.theme==='light');
+  document.getElementById('opt-dark').classList.toggle('active-opt', profile.theme==='dark');
+  document.getElementById('opt-eur').classList.toggle('active-opt', profile.currency==='EUR');
+  document.getElementById('opt-usd').classList.toggle('active-opt', profile.currency==='USD');
+  document.getElementById('input-username').value = profile.username || '';
 }
 function saveUsername(){
-  data.username = document.getElementById('input-username').value;
-  saveData();
+  const val = document.getElementById('input-username').value;
+  profile.username = val;
+  clearTimeout(usernameSaveTimeout);
+  usernameSaveTimeout = setTimeout(async ()=>{
+    await sb.from('profiles').update({username: val}).eq('id', currentUser.id);
+  }, 600);
 }
-function setTheme(t){
-  data.theme = t;
+async function setTheme(t){
+  profile.theme = t;
   document.documentElement.setAttribute('data-theme', t);
-  saveData();
   updateSettingsUI();
+  await sb.from('profiles').update({theme:t}).eq('id', currentUser.id);
 }
-function setCurrency(c){
-  data.currency = c;
-  saveData();
+async function setCurrency(c){
+  profile.currency = c;
   updateSettingsUI();
   renderGarage();
   if(currentVehicleId){ refreshVehStats(); renderSuiviRecent(); }
+  await sb.from('profiles').update({currency:c}).eq('id', currentUser.id);
 }
 
 function escapeHtml(str){
@@ -1463,4 +1622,4 @@ function escapeHtml(str){
 init();
 </script>
 </body>
-</html>
+  </html>
