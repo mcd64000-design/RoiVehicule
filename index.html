@@ -498,11 +498,11 @@ textarea{resize:none; height:60px;}
 
 <div class="modal-overlay" id="modal-confirm">
   <div class="modal-box confirm-box">
-    <div class="modal-header"><h2>Confirmer la suppression</h2><div class="close-x" onclick="closeModal('modal-confirm')">✕</div></div>
+    <div class="modal-header"><h2>Confirmer</h2><div class="close-x" onclick="closeModal('modal-confirm')">✕</div></div>
     <p>Cette action est irréversible. Voulez-vous continuer ?</p>
     <div class="btn-row">
       <button class="btn btn-outline" onclick="closeModal('modal-confirm')">Annuler</button>
-      <button class="btn btn-danger" id="confirm-yes-btn">Supprimer</button>
+      <button class="btn btn-danger" id="confirm-yes-btn">Confirmer</button>
     </div>
   </div>
 </div>
@@ -573,6 +573,15 @@ function switchTab(tab){
 }
 function openModal(id){ document.getElementById(id).classList.add('active'); }
 function closeModal(id){ document.getElementById(id).classList.remove('active'); }
+
+function openConfirm(message, onConfirm){
+  document.querySelector('#modal-confirm p').textContent = message;
+  document.getElementById('confirm-yes-btn').onclick = ()=>{
+    closeModal('modal-confirm');
+    onConfirm();
+  };
+  openModal('modal-confirm');
+}
 
 /* ============ MAINTENANCE ALERTS ============ */
 function computeMaintProgress(v, subKey, intervalKm){
@@ -826,15 +835,13 @@ function createVehicule(){
 }
 
 function askDeleteVehicule(id){
-  document.getElementById('confirm-yes-btn').onclick = ()=>{
+  openConfirm('Cette action est irréversible. Voulez-vous continuer ?', ()=>{
     data.vehicles = data.vehicles.filter(v=>v.id!==id);
     data.expenses = data.expenses.filter(e=>e.vehicleId!==id);
     data.kmLogs = data.kmLogs.filter(k=>k.vehicleId!==id);
     saveData();
-    closeModal('modal-confirm');
     renderGarage();
-  };
-  openModal('modal-confirm');
+  });
 }
 
 function toggleFavori(id){
@@ -1020,7 +1027,15 @@ function updateKmOnly(){
   const km = parseNum(document.getElementById('km-new').value);
   const v = data.vehicles.find(x=>x.id===currentVehicleId);
   if(!v || isNaN(km)){ alert('Merci de saisir un kilométrage valide.'); return; }
-  if(km < v.kmActuel){ alert('Le nouveau kilométrage doit être supérieur au kilométrage actuel.'); return; }
+  if(km < v.kmActuel){
+    openConfirm('Le kilométrage saisi ('+Math.round(km).toLocaleString('fr-FR')+' km) est inférieur au kilométrage actuel ('+v.kmActuel.toLocaleString('fr-FR')+' km). Voulez-vous forcer cette valeur ?', ()=>{
+      applyKmUpdate(v, km);
+    });
+    return;
+  }
+  applyKmUpdate(v, km);
+}
+function applyKmUpdate(v, km){
   v.kmActuel = km;
   data.kmLogs.push({ id: uid(), vehicleId: v.id, date: todayStr(), km });
   saveData();
@@ -1114,16 +1129,14 @@ function formatDate(d){
   return day+'/'+m+'/'+y;
 }
 function askDeleteDepense(id){
-  document.getElementById('confirm-yes-btn').onclick = ()=>{
+  openConfirm('Cette action est irréversible. Voulez-vous continuer ?', ()=>{
     data.expenses = data.expenses.filter(e=>e.id!==id);
     saveData();
-    closeModal('modal-confirm');
     renderHistorique();
     refreshVehStats();
     renderSuiviRecent();
     renderMaintTracker();
-  };
-  openModal('modal-confirm');
+  });
 }
 
 function kmAtOrBefore(vehicleId, dateStr){
@@ -1451,4 +1464,4 @@ function escapeHtml(str){
 init();
 </script>
 </body>
-</html>
+  </html>
